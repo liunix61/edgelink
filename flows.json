@@ -1,0 +1,119 @@
+[
+    {
+        "id": "dee0d1b0cfd62a6c",
+        "type": "tab",
+        "label": "流程 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "7c3d5db9f803b38d",
+        "type": "mqtt-broker",
+        "name": "broker1",
+        "broker": "test.mosquitto.org",
+        "port": "1883",
+        "clientid": "3369",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "9d83039419596038",
+        "type": "inject",
+        "z": "dee0d1b0cfd62a6c",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "3",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 500,
+        "y": 280,
+        "wires": [
+            [
+                "d22f80b22a569ac5"
+            ]
+        ]
+    },
+    {
+        "id": "6d4f9b7555fbdb8c",
+        "type": "debug",
+        "z": "dee0d1b0cfd62a6c",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 960,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "fc98216cb9318ce3",
+        "type": "mqtt out",
+        "z": "dee0d1b0cfd62a6c",
+        "name": "MQTT上报",
+        "topic": "/edgelink/test1",
+        "qos": "1",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "7c3d5db9f803b38d",
+        "x": 970,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "d22f80b22a569ac5",
+        "type": "function",
+        "z": "dee0d1b0cfd62a6c",
+        "name": "function 1",
+        "func": "msg.payload = msg.payload % 1000;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 660,
+        "y": 280,
+        "wires": [
+            [
+                "6d4f9b7555fbdb8c",
+                "fc98216cb9318ce3"
+            ]
+        ]
+    }
+]

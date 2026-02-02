@@ -1,0 +1,27 @@
+# EditorConfig helps developers define and maintain consistent
+# coding styles between different editors and IDEs
+# More information: http://editorconfig.org
+
+# top-most EditorConfig file
+root = true
+
+# C++ source code
+[*.cpp]
+[*.h]
+[*.hpp]
+
+# Use 4 spaces for indentation
+indent_style = space
+indent_size = 4
+
+# End of line format
+end_of_line = lf
+
+# Character encoding
+charset = utf-8
+
+# Trim trailing whitespace on save
+trim_trailing_whitespace = true
+
+# Ensure an empty line at the end of files
+insert_final_newline = true

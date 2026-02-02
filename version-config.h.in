@@ -1,0 +1,8 @@
+#pragma once
+
+// config.h.in
+#define GIT_BRANCH "@GIT_BRANCH@"
+#define GIT_TAG "@GIT_TAG@"
+#define GIT_REVISION "@GIT_REVISION@"
+
+#define EDGELINK_VERSION "@EL_VERSION@"
