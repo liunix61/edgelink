@@ -95,19 +95,22 @@ std::unique_ptr<IFlow> FlowFactory::create_flow(const JsonArray& flows_config,
         if (z == flow_node_id) {
             const std::string node_id = elem.at("id").get<std::string>();
             json_nodes[node_id] = &elem;
-            for (const auto& port : elem.at("wires")) {
-                for (const auto& endpoint : port) {
-                    // 修复：std::string_view 悬垂引用（get<std::string>() 返回临时）——改用 std::string 持有
-                    const std::string from = node_id;
-                    const std::string to = endpoint.get<std::string>();
-                    // 修复：wires 引用不存在的节点（悬空 wire）——跳过加边，避免拓扑排序/创建时崩溃
-                    if (json_nodes.find(to) != json_nodes.end() ||
-                        std::any_of(flows_config.begin(), flows_config.end(), [&to](const auto& nv) {
-                            if (!nv.is_object()) return false;
-                            const auto& obj = nv;
-                            return obj.contains("id") && obj.at("id") == to;
-                        })) {
-                        sorter.add_edge(from, to);
+            // 修复：wires 属性可缺失（纯输出节点如 status/complete 无 wires）——防御性检查，避免 at() 抛异常
+            if (elem.contains("wires")) {
+                for (const auto& port : elem.at("wires")) {
+                    for (const auto& endpoint : port) {
+                        // 修复：std::string_view 悬垂引用（get<std::string>() 返回临时）——改用 std::string 持有
+                        const std::string from = node_id;
+                        const std::string to = endpoint.get<std::string>();
+                        // 修复：wires 引用不存在的节点（悬空 wire）——跳过加边，避免拓扑排序/创建时崩溃
+                        if (json_nodes.find(to) != json_nodes.end() ||
+                            std::any_of(flows_config.begin(), flows_config.end(), [&to](const auto& nv) {
+                                if (!nv.is_object()) return false;
+                                const auto& obj = nv;
+                                return obj.contains("id") && obj.at("id") == to;
+                            })) {
+                            sorter.add_edge(from, to);
+                        }
                     }
                 }
             }
