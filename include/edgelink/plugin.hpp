@@ -15,7 +15,7 @@
 
 namespace edgelink {
 
-struct BOOST_SYMBOL_VISIBLE IPlugin {
+struct EDGELINK_SYMBOL_VISIBLE IPlugin {
     virtual std::string_view name() const = 0;
     virtual const std::unordered_map<std::string, std::unique_ptr<INodeDescriptor>>& node_descriptors() const = 0;
 
@@ -23,7 +23,7 @@ struct BOOST_SYMBOL_VISIBLE IPlugin {
 };
 
 #define EDGELINK_PLUGIN_DEFINE(class_)                                                                                 \
-    extern "C" BOOST_SYMBOL_EXPORT class_ __edgelink_plugin_object;                                                    \
+    extern "C" EDGELINK_SYMBOL_EXPORT class_ __edgelink_plugin_object;                                                    \
     class_ __edgelink_plugin_object
 
 }; // namespace edgelink

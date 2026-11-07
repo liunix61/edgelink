@@ -1,5 +1,3 @@
-#include <boost/di.hpp>
-
 #include "version-config.h"
 #include "edgelink/edgelink.hpp"
 #include "logging.hpp"
@@ -92,17 +90,12 @@ int main(int argc, char* argv[]) {
         .flows_json_path = flows_path,
     };
 
-    const auto injector =
-        boost::di::make_injector(boost::di::bind<>().to(el_settings),                           // EdgeLinkSettings
-                          boost::di::bind<App>().in(boost::di::singleton),                      // App
-                          boost::di::bind<IEngine>().to<Engine>().in(boost::di::singleton),     // Engine
-                          boost::di::bind<IRegistry>().to<Registry>().in(boost::di::singleton), // Registry
-                          boost::di::bind<IFlowFactory>().to<edgelink::flows::FlowFactory>().in(boost::di::singleton) // Engine
-        );
-
-    // 修复：injector.create<App>() 返回 App 值（非指针），133 行 app-> 非法
-    // 改用 create<std::shared_ptr<App>>() 获取共享指针
-    auto app = injector.create<std::shared_ptr<App>>();
+    // 去 Boost：boost::di 已移除——手动构造依赖链（清晰、零 Boost 依赖）
+    // Registry → FlowFactory → Engine → App（引用成员需先构造被依赖对象）
+    auto registry = std::make_shared<Registry>(el_settings);
+    auto flow_factory = std::make_shared<edgelink::flows::FlowFactory>(*registry);
+    auto engine = std::make_shared<Engine>(el_settings, *flow_factory);
+    auto app = std::make_shared<App>(std::make_shared<JsonObject>(), engine);
 
     // 启动主程序
     try {

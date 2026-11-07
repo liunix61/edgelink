@@ -1,7 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
-#include <boost/config.hpp>
 
-class BOOST_SYMBOL_VISIBLE my_plugin_api {
+// 去 Boost：boost/config.hpp 已移除——BOOST_SYMBOL_VISIBLE 用自研等价宏（导出符号）
+#if defined(_WIN32)
+#define MY_PLUGIN_API __declspec(dllexport)
+#else
+#define MY_PLUGIN_API __attribute__((visibility("default")))
+#endif
+
+class MY_PLUGIN_API my_plugin_api {
 public:
    virtual std::string name() const = 0;
    virtual float calculate(float x, float y) = 0;

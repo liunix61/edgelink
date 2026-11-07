@@ -63,7 +63,6 @@ include_directories(
     ${CMAKE_BINARY_DIR}
     ./include
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/rva/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/boost-di/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/croncpp/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/quickjspp"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/nlohmann"
