@@ -1,6 +1,10 @@
 #pragma once
 
+#include <boost/json/value.hpp>
+
 namespace edgelink {
+
+using Variant = boost::json::value;
 
 enum class PropValueType {
     STR = 0,
