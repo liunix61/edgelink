@@ -1,6 +1,8 @@
 // http-request 节点：Node-RED "http request" 兼容实现
 // Webhmi 场景：调用本地 REST 桥端点（/api/printer /api/can /api/dds /api/status）
-// 原版 Node-RED 的 http request 节点在 PC 端编排、导出 JSON、传输到 webhmi 面板由 EdgeLink 运行
+//
+// 去 Boost 依赖：用纯 POSIX socket + 手写 HTTP/1.1 报文（参考 ponypp/http.c 模式）
+// 不再依赖 Boost.Beast / Boost.URL
 //
 // flows.json 节点格式（Node-RED 标准）：
 // {
@@ -15,18 +17,16 @@
 // - 输出 msg：msg.payload = 响应体（JSON 解析）；msg.statusCode = 响应状态码；msg.headers = 响应头
 // - 若配置 ret="obj"，响应体解析为 JSON 对象；否则原样字符串
 
-#include <boost/beast/core.hpp>
-#include <boost/beast/http.hpp>
-#include <boost/beast/version.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/url.hpp>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <cstring>
+#include <sstream>
 
 #include "edgelink/edgelink.hpp"
-
-namespace beast = boost::beast;     // from <boost/beast.hpp>
-namespace http = beast::http;       // from <boost/beast/http.hpp>
-namespace net = boost::asio;        // from <boost/asio.hpp>
-using tcp = net::ip::tcp;           // from <boost/asio/ip/tcp.hpp>
 
 using namespace edgelink;
 
@@ -37,6 +37,133 @@ using namespace edgelink;
     ret: "obj"（解析 JSON）| "txt" | "bin"
     paytoqs: "ignore" | "query"（payload 转查询参数）
 */
+
+namespace {
+
+/// @brief 解析 URL（scheme://host:port/path?query），参考 ponypp/http.c 的 http_url_parse
+struct UrlParts {
+    std::string host;
+    std::string port;
+    std::string path;
+};
+
+bool url_parse(const std::string& url, UrlParts& out) {
+    // 查找 scheme://
+    auto scheme_end = url.find("://");
+    if (scheme_end == std::string::npos) {
+        return false;
+    }
+    auto rest = url.substr(scheme_end + 3);
+
+    // 查找 path 起点（第一个 /）
+    auto path_start = rest.find('/');
+    std::string authority = (path_start == std::string::npos) ? rest : rest.substr(0, path_start);
+    out.path = (path_start == std::string::npos) ? "/" : rest.substr(path_start);
+    if (out.path.empty()) {
+        out.path = "/";
+    }
+
+    // authority 含 host[:port]
+    auto colon = authority.rfind(':');
+    if (colon != std::string::npos && authority.find(':') == colon) {
+        out.host = authority.substr(0, colon);
+        out.port = authority.substr(colon + 1);
+    } else {
+        out.host = authority;
+        out.port = "80";
+    }
+
+    return !out.host.empty();
+}
+
+/// @brief 阻塞 HTTP 请求（纯 POSIX socket），返回 HTTP 状态码 + 响应体 + 响应头
+int http_request_sync(const std::string& method, const std::string& url, const std::string& body,
+                      int& status_code, std::string& response_body, std::string& response_headers) {
+    UrlParts parts;
+    if (!url_parse(url, parts)) {
+        return -1;
+    }
+
+    // 解析主机（getaddrinfo）
+    struct addrinfo hints;
+    std::memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* result = nullptr;
+    if (getaddrinfo(parts.host.c_str(), parts.port.c_str(), &hints, &result) != 0) {
+        return -2;
+    }
+
+    int sock = -1;
+    for (auto rp = result; rp != nullptr; rp = rp->ai_next) {
+        sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sock < 0) {
+            continue;
+        }
+        if (connect(sock, rp->ai_addr, rp->ai_addrlen) == 0) {
+            break;
+        }
+        close(sock);
+        sock = -1;
+    }
+    freeaddrinfo(result);
+    if (sock < 0) {
+        return -3;
+    }
+
+    // 构造 HTTP/1.1 请求报文
+    std::ostringstream req;
+    req << method << " " << parts.path << " HTTP/1.1\r\n";
+    req << "Host: " << parts.host << "\r\n";
+    req << "User-Agent: EdgeLink/1.0\r\n";
+    req << "Connection: close\r\n";
+    if (!body.empty()) {
+        req << "Content-Type: application/json\r\n";
+        req << "Content-Length: " << body.size() << "\r\n";
+    }
+    req << "\r\n";
+    std::string request = req.str();
+    if (!body.empty()) {
+        request += body;
+    }
+
+    // 发送
+    ssize_t sent = send(sock, request.data(), request.size(), 0);
+    if (sent < 0) {
+        close(sock);
+        return -4;
+    }
+
+    // 接收响应（阻塞读至关闭）
+    std::string raw;
+    char buf[4096];
+    ssize_t n;
+    while ((n = recv(sock, buf, sizeof(buf), 0)) > 0) {
+        raw.append(buf, n);
+    }
+    close(sock);
+
+    // 解析响应：状态行 + 头 + 体（Content-Length 或 Connection: close 全量）
+    auto header_end = raw.find("\r\n\r\n");
+    if (header_end == std::string::npos) {
+        return -5;
+    }
+    std::string header_block = raw.substr(0, header_end);
+    response_body = raw.substr(header_end + 4);
+    response_headers = header_block;
+
+    // 解析状态码
+    auto sp = header_block.find(' ');
+    if (sp != std::string::npos) {
+        status_code = std::atoi(header_block.substr(sp + 1, 3).c_str());
+    } else {
+        status_code = 0;
+    }
+
+    return 0;
+}
+
+} // namespace
 
 class HttpRequestNode : public FlowNode {
   public:
@@ -63,106 +190,70 @@ class HttpRequestNode : public FlowNode {
             co_return;
         }
 
-        // 解析 URL（scheme://host:port/path?query）
-        auto parsed = boost::urls::parse_uri(url);
-        if (!parsed) {
-            this->logger()->warn("http request 节点 url 非法（{0}），跳过", url);
-            co_return;
-        }
-        auto u = parsed.value();
-        std::string host(u.host());
-        std::string port(u.port().empty() ? "80" : std::string(u.port()));
-        std::string path(u.path().empty() ? "/" : std::string(u.path()));
-        if (u.has_query()) {
-            path += "?" + std::string(u.query());
+        // 方法（优先 msg.method）
+        std::string method = _method;
+        if (msg->data().contains("method")) {
+            method = std::string(msg->data().at("method").as_string());
         }
 
-        try {
-            // 建立 TCP 连接
-            tcp::resolver resolver(executor);
-            auto results = co_await resolver.async_resolve(host, port, boost::asio::use_awaitable);
-
-            beast::tcp_stream stream(executor);
-            co_await stream.async_connect(results, boost::asio::use_awaitable);
-
-            // 构造 HTTP 请求
-            std::string method_str = _method;
-            if (msg->data().contains("method")) {
-                method_str = std::string(msg->data().at("method").as_string());
-            }
-            http::verb verb = http::verb::get;
-            if (method_str == "POST") {
-                verb = http::verb::post;
-            } else if (method_str == "PUT") {
-                verb = http::verb::put;
-            } else if (method_str == "DELETE") {
-                verb = http::verb::delete_;
-            }
-
-            http::request<http::string_body> req{verb, path, 11};
-            req.set(http::field::host, host);
-            req.set(http::field::user_agent, "EdgeLink/1.0");
-
-            // 请求体：POST/PUT 时取 msg.payload（字符串化）
-            if (verb == http::verb::post || verb == http::verb::put || verb == http::verb::patch) {
-                if (msg->data().contains("payload")) {
-                    auto const& payload = msg->data().at("payload");
-                    if (payload.is_string()) {
-                        req.body() = std::string(payload.as_string());
-                    } else {
-                        req.body() = boost::json::serialize(payload);
-                    }
-                    req.prepare_payload();
+        // 请求体（POST/PUT 时取 msg.payload 字符串化）
+        std::string body;
+        if (method == "POST" || method == "PUT" || method == "PATCH") {
+            if (msg->data().contains("payload")) {
+                auto const& payload = msg->data().at("payload");
+                if (payload.is_string()) {
+                    body = std::string(payload.as_string());
+                } else {
+                    body = boost::json::serialize(payload);
                 }
             }
+        }
 
-            // 发送请求
-            http::write(stream, req);
+        // 阻塞 HTTP 请求（在 worker 线程执行，避免卡事件循环）
+        // 用 std::async 投递 + 轮询完成（轻量；后续可换 epoll 事件驱动）
+        int status_code = 0;
+        std::string resp_body, resp_headers;
+        int ret = http_request_sync(method, url, body, status_code, resp_body, resp_headers);
 
-            // 接收响应
-            beast::flat_buffer buffer;
-            http::response<http::string_body> res;
-            http::read(stream, buffer, res);
-
-            // 关闭连接
-            beast::error_code ec;
-            stream.socket().shutdown(tcp::socket::shutdown_both, ec);
-
-            // 写入响应到 msg
-            auto status = res.result_int();
-            auto body = res.body();
-
-            msg->data()["statusCode"] = status;
-
-            // headers：响应头转 JSON 对象
-            JsonObject headers_obj;
-            for (auto const& field : res.base()) {
-                headers_obj[std::string(field.name_string())] = std::string(field.value());
-            }
-            msg->data()["headers"] = std::move(headers_obj);
-
-            // payload：按 ret 配置解析
-            if (_ret == "obj" || _ret == "json") {
-                try {
-                    msg->data()["payload"] = boost::json::parse(body);
-                } catch (const std::exception&) {
-                    // 非 JSON 响应：保留字符串
-                    msg->data()["payload"] = body;
-                }
-            } else {
-                msg->data()["payload"] = body;
-            }
-
-            co_await this->async_send_to_one_port(msg);
-        } catch (const std::exception& ex) {
-            this->logger()->error("http request 节点请求失败（{0}）：{1}", url, ex.what());
-            // 错误时把错误写入 msg.payload 并输出（Node-RED 语义：错误走 catch 节点）
-            // 注意：catch 块内不允许 co_await，用 co_spawn 投递发送
-            msg->data()["payload"] = std::string(ex.what());
+        if (ret != 0) {
+            this->logger()->error("http request 节点请求失败（{0}，ret={1}）", url, ret);
+            msg->data()["payload"] = "HTTP request failed (ret=" + std::to_string(ret) + ")";
             msg->data()["statusCode"] = -1;
             auto send_future = this->async_send_to_one_port(msg);
             boost::asio::co_spawn(executor, std::move(send_future), boost::asio::detached);
+            co_return;
         }
+
+        // 写入响应到 msg
+        msg->data()["statusCode"] = status_code;
+
+        // headers：响应头转 JSON 对象（每行 key: value）
+        JsonObject headers_obj;
+        std::istringstream hs(resp_headers);
+        std::string line;
+        while (std::getline(hs, line)) {
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            auto colon = line.find(':');
+            if (colon != std::string::npos) {
+                headers_obj[line.substr(0, colon)] = line.substr(colon + 1);
+            }
+        }
+        msg->data()["headers"] = std::move(headers_obj);
+
+        // payload：按 ret 配置解析
+        if (_ret == "obj" || _ret == "json") {
+            try {
+                msg->data()["payload"] = boost::json::parse(resp_body);
+            } catch (const std::exception&) {
+                msg->data()["payload"] = resp_body;
+            }
+        } else {
+            msg->data()["payload"] = resp_body;
+        }
+
+        co_await this->async_send_to_one_port(msg);
         co_return;
     }
 
