@@ -55,7 +55,6 @@ find_package(pegtl REQUIRED)
 # 去 Boost：async_mqtt（内部 boost::asio）已用 NanoSDK 替代，不再编译
 add_subdirectory(./libs/quickjspp/quickjs EXCLUDE_FROM_ALL)
 add_subdirectory(./libs/rttr EXCLUDE_FROM_ALL)
-add_subdirectory(./libs/meta.hpp EXCLUDE_FROM_ALL)
 
 # 测试构建默认开启（EdgeLinkTests 由 BUILD_TESTING 控制）
 set(BUILD_TESTING ON)
@@ -67,7 +66,6 @@ include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/boost-di/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/croncpp/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/quickjspp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/meta.hpp/headers"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/nlohmann"
 )
 

@@ -6,12 +6,8 @@ if(EL_WITH_MODBUS)
 
     find_library(LIBMODBUS NAMES modbus REQUIRED)
 
-    target_include_directories(${THIS_PLUGIN}
-        PRIVATE ./libs/async_mqtt/include
-    )
-
+    # 去 Boost：async_mqtt（内部 boost::asio）已移除——modbus 源码零 async_mqtt 引用，清理死引用
     target_link_libraries(${THIS_PLUGIN}
-        PRIVATE async_mqtt_iface
         PRIVATE ${LIBMODBUS}
     )
 

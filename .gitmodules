@@ -1,34 +1,21 @@
-[submodule "libs/mustache"]
-	path = libs/mustache
-	url = git@github.com:pdimov/mustache.git
-[submodule "libs/async_mqtt"]
-	path = libs/async_mqtt
-	url = git@github.com:redboltz/async_mqtt.git
-[submodule "libs/rva"]
-	path = libs/rva
-	url = git@github.com:edge-link/recursive-variant.git
 [submodule "libs/boost-di"]
 	path = libs/boost-di
 	url = git@github.com:boost-ext/di.git
 [submodule "libs/croncpp"]
 	path = libs/croncpp
 	url = git@github.com:mariusbancila/croncpp.git
-[submodule "libs/beast"]
-	path = libs/beast
-	url = git@github.com:boostorg/beast.git
-	branch = 5e55b55
 [submodule "libs/quickjspp"]
 	path = libs/quickjspp
 	url = git@github.com:ftk/quickjspp.git
 [submodule "libs/rttr"]
 	path = libs/rttr
 	url = git@github.com:rttrorg/rttr.git
-[submodule "libs/meta.hpp"]
-	path = libs/meta.hpp
-	url = git@github.com:BlackMATov/meta.hpp.git
 [submodule "libs/nanosdk"]
 	path = libs/nanosdk
 	url = git@github.com:EMQX/NanoSDK.git
 [submodule "libs/nlohmann"]
 	path = libs/nlohmann
 	url = git@github.com:nlohmann/json.git
+[submodule "libs/rva"]
+	path = libs/rva
+	url = git@github.com:edge-link/recursive-variant.git
