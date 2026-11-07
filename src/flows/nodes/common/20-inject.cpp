@@ -145,11 +145,8 @@ class InjectNode : public SourceNode {
   protected:
     Awaitable<void> on_async_run() override {
         auto executor = co_await this_coro::executor();
-        this->logger()->info("inject on_async_run 执行：once={}, repeat={}, cron={}", _once, _repeat ? *_repeat : 0,
-                             _cron ? true : false);
 
         if (_once) {
-            this->logger()->info("inject once 分支：执行 async_once_task");
             co_await this->async_once_task(executor);
         }
 

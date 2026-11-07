@@ -155,7 +155,9 @@ JsonValue evaluate_property_value(const JsonValue& value, const std::string_view
             if (data.is_array()) {
                 result = data;
             } else if (data.is_string()) {
-                const auto& bin_str = data.get<std::string>();
+                // 修复：const auto& 绑定临时 string → 悬垂（get<std::string>() 临时在 :158 语句末析构，
+                //       :160 for 循环遍历已悬垂 bin_str）。改用 std::string 值持有。
+                const std::string bin_str = data.get<std::string>();
                 auto ja = JsonArray::array();
                 for (auto c : bin_str) {
                     ja.push_back(JsonValue(c));

@@ -69,13 +69,13 @@ class JsonProxy {
 };
 
 /// @brief 从 JSON 对象获取指定字符串值，如果找不到返回默认值
-inline const std::string_view value_or(const JsonObject& json_obj, const std::string_view key,
-                                       const std::string_view default_value) {
+/// @note 修复：返回 string_view 指向 get<std::string>() 临时 → 悬垂。改为返回 std::string（值语义）。
+inline std::string value_or(const JsonObject& json_obj, const std::string_view key, const std::string_view default_value) {
     auto it = json_obj.find(std::string(key));
     if (it != json_obj.end() && it->is_string()) {
-        return std::string_view(it->get<std::string>());
+        return it->get<std::string>();
     }
-    return default_value;
+    return std::string(default_value);
 }
 
 /// @brief 从 JSON 对象获取指定 bool 值，如果找不到返回默认值

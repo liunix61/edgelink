@@ -94,10 +94,7 @@ Awaitable<void> Flow::async_send_one_internal(std::unique_ptr<Envelope> envelope
 
     if (can_deliver) {
         this->on_pre_deliver_event()(this, envelope.get());
-        _logger->debug("async_send_one_internal 投递到节点：{} ({})", envelope->destination_node->id(),
-                       envelope->destination_node->descriptor()->type_name());
         co_await envelope->destination_node->receive_async(envelope->msg);
-        _logger->debug("async_send_one_internal 节点 {} 接收完成", envelope->destination_node->id());
         this->on_post_deliver_event()(this, envelope.get());
     }
 }
