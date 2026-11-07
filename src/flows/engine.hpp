@@ -4,7 +4,7 @@ namespace edgelink {
 
 struct IFlowNode;
 
-using MsgRoutingPath = boost::container::static_vector<const IFlowNode*, 32>;
+using MsgRoutingPath = std::vector<const IFlowNode*>;
 
 struct EdgeLinkSettings;
 

@@ -22,15 +22,14 @@ add_library(${THE_LIB} SHARED ${SOURCES})
 
 # 包含Boost头文件
 target_include_directories(${THE_LIB}
-    PRIVATE ${Boost_INCLUDE_DIRS}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../libs/rva/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../libs/meta.hpp/headers
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../libs/nlohmann
 )
 
 target_link_libraries(
     ${THE_LIB}
-    PRIVATE Boost::json
     PRIVATE fmt::fmt
     PRIVATE spdlog::spdlog
     PRIVATE RTTR::Core

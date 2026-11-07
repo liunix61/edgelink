@@ -1,5 +1,8 @@
 #pragma once
 
+#include <variant>
+#include <vector>
+
 namespace edgelink {
 
 struct INode;
@@ -28,7 +31,8 @@ enum class PropertySegmentKind : size_t {
 
 using PropertySegment = std::variant<std::string_view, size_t>;
 
-using PropertySegments = boost::container::static_vector<PropertySegment, PROPERTY_SEGMENT_MAX>;
+// boost::container::static_vector → std::vector（固定上限由逻辑保证）
+using PropertySegments = std::vector<PropertySegment>;
 
 inline PropertySegmentKind kind(const PropertySegment& seg) { return static_cast<PropertySegmentKind>(seg.index()); }
 

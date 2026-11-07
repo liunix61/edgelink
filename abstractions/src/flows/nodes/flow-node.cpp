@@ -1,5 +1,6 @@
 
 #include "edgelink/edgelink.hpp"
+#include <cassert>
 
 namespace edgelink {
 
@@ -44,24 +45,24 @@ Awaitable<void> FlowNode::async_send_to_many_port(std::vector<MsgPtr>&& msgs) {
         }
     }
     auto flow = this->flow();
-    BOOST_ASSERT(flow != nullptr);
+    assert(flow != nullptr);
     co_await flow->async_send_many(std::move(envelopes));
     co_return;
 }
 
 const std::vector<OutputPort> FlowNode::setup_output_ports(const JsonObject& config, IFlow* flow) {
     auto ports = std::vector<OutputPort>();
-    for (const auto& port_config : config.at("wires").as_array()) {
+    for (const auto& port_config : config.at("wires")) {
         auto output_wires = std::vector<IFlowNode*>();
-        for (const auto& endpoint : port_config.as_array()) {
+        for (const auto& endpoint : port_config) {
             // 修复：Node-RED 流中 wires 可能引用不存在的节点 ID（悬空 wire）——原 get_node 抛异常崩溃
             // 改为容忍：跳过悬空 wire 并记录警告，不中断流程加载
-            auto endpoint_str = endpoint.as_string();
+            auto endpoint_str = endpoint.get<std::string>();
             try {
                 auto out_node = flow->get_node(endpoint_str);
                 output_wires.push_back(out_node);
             } catch (const std::exception& ex) {
-                spdlog::warn("节点 (id={}) 的 wires 引用不存在的节点（{}），已跳过该连接：{}", config.at("id").as_string(),
+                spdlog::warn("节点 (id={}) 的 wires 引用不存在的节点（{}），已跳过该连接：{}", config.at("id").get<std::string>(),
                              endpoint_str, ex.what());
             }
         }

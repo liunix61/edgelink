@@ -3,7 +3,7 @@
 #include "edgelink/edgelink.hpp"
 #include "edgelink/propex.hpp"
 
-namespace json = boost::json;
+using json = nlohmann::json;
 namespace pegtl = tao::pegtl;
 
 namespace edgelink::propex {
@@ -67,7 +67,7 @@ template <> struct Action<ArrayIndexInteger> {
         // 修复：负数/超长索引原 boost::lexical_cast 抛 bad_lexical_cast 未捕获——解析失败返回
         size_t i = 0;
         try {
-            i = boost::lexical_cast<size_t>(seg_str);
+            i = std::stoull(std::string(seg_str));
         } catch (const std::exception&) {
             return; // 解析失败，跳过该索引段
         }
@@ -110,7 +110,7 @@ JsonValue evaluate_property_value(const JsonValue& value, const std::string_view
     } else if (type == "num") {
         if (value.is_string()) {
             try {
-                result = json::parse(value.as_string());
+                result = json::parse(value.get<std::string>());
             } catch (const std::exception&) {
                 throw std::runtime_error("Invalid number format");
                 return result;
@@ -123,7 +123,7 @@ JsonValue evaluate_property_value(const JsonValue& value, const std::string_view
     } else if (type == "json") {
         try {
             if (value.is_string()) {
-                result = json::parse(value.as_string());
+                result = json::parse(value.get<std::string>());
             } else {
                 result = value;
             }
@@ -151,15 +151,14 @@ JsonValue evaluate_property_value(const JsonValue& value, const std::string_view
         result = int64_t(time_ms);
     } else if (type == "bin") {
         try {
-            JsonValue data = boost::json::parse(value.as_string());
-            if(data.is_array()) {
-                result = data.as_array();
-            }
-            else if(data.is_string()) {
-                const auto& bin_str = data.as_string();
-                auto ja = JsonArray();
-                for(auto c: bin_str) {
-                    ja.emplace_back(JsonValue(c));
+            JsonValue data = json::parse(value.get<std::string>());
+            if (data.is_array()) {
+                result = data;
+            } else if (data.is_string()) {
+                const auto& bin_str = data.get<std::string>();
+                auto ja = JsonArray::array();
+                for (auto c : bin_str) {
+                    ja.push_back(JsonValue(c));
                 }
                 result = ja;
             } else {
@@ -169,7 +168,7 @@ JsonValue evaluate_property_value(const JsonValue& value, const std::string_view
             throw std::runtime_error("Invalid JSON format");
         }
     } else if (type == "msg") {
-        result = JsonValue(msg.at_propex(value.as_string()));
+        result = JsonValue(msg.at_propex(value.get<std::string>()));
     } else if (type == "flow") {
         //
         TODO("暂时不知支持");
@@ -184,7 +183,7 @@ JsonValue evaluate_property_value(const JsonValue& value, const std::string_view
         */
         TODO("暂时不知支持");
     } else if (type == "bool") {
-        result = json::parse(value.as_string());
+        result = json::parse(value.get<std::string>());
     } else if (type == "jsonata") {
         TODO("暂时不知支持 jsonata");
     } else if (type == "env") {

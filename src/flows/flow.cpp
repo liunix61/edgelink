@@ -1,20 +1,18 @@
 #include "edgelink/edgelink.hpp"
 #include "edgelink/flows/dependency-sorter.hpp"
 #include "flow.hpp"
+#include <cassert>
 
 using namespace edgelink;
-using namespace boost;
-namespace this_coro = boost::asio::this_coro;
-
-// using CloneMsgStaticVector = boost::container::static_vector<std::shared_ptr<edgelink::Msg>, 32>;
+namespace this_coro = edgelink::this_coro;
 
 namespace edgelink::flows {
 
 Flow::Flow(const JsonObject& json_config, IEngine* engine)
-    : _logger(spdlog::default_logger()->clone("Flow")), _id(json_config.at("id").as_string()),
-      _label(json_config.at("label").as_string()), _disabled(edgelink::value_or(json_config, "disabled", true)),
+    : _logger(spdlog::default_logger()->clone("Flow")), _id(json_config.at("id").get<std::string>()),
+      _label(json_config.at("label").get<std::string>()), _disabled(edgelink::value_or(json_config, "disabled", true)),
       _engine(engine), _nodes() {
-    BOOST_ASSERT(engine != nullptr);
+    assert(engine != nullptr);
 }
 
 Flow::~Flow() {
@@ -23,12 +21,12 @@ Flow::~Flow() {
 
 Awaitable<void> Flow::async_start() {
     //
-    auto executor = co_await boost::asio::this_coro::executor;
+    auto executor = co_await this_coro::executor();
     _stop_source = std::make_unique<std::stop_source>();
 
     for (auto const& node : _nodes) {
         _logger->debug("正在启动流程节点：[id={0}, type={1}]", node->id(), node->type());
-        boost::asio::co_spawn(executor, node->async_start(), boost::asio::detached);
+        co_spawn(executor, node->async_start(), Detached{});
         _logger->debug("流程节点已启动");
     }
 }
@@ -65,11 +63,11 @@ Awaitable<void> Flow::async_send_many(std::vector<std::unique_ptr<Envelope>>&& e
         }
     }
 
-    auto exec = co_await this_coro::executor;
+    auto exec = co_await this_coro::executor();
 
     for (auto&& e : envelopes) {
         // co_await this->async_send_one(std::move(e));
-        boost::asio::co_spawn(exec, this->async_send_one_internal(std::move(e)), boost::asio::detached);
+        co_spawn(exec, this->async_send_one_internal(std::move(e)), Detached{});
     }
     co_return;
 }
@@ -96,7 +94,10 @@ Awaitable<void> Flow::async_send_one_internal(std::unique_ptr<Envelope> envelope
 
     if (can_deliver) {
         this->on_pre_deliver_event()(this, envelope.get());
+        _logger->debug("async_send_one_internal 投递到节点：{} ({})", envelope->destination_node->id(),
+                       envelope->destination_node->descriptor()->type_name());
         co_await envelope->destination_node->receive_async(envelope->msg);
+        _logger->debug("async_send_one_internal 节点 {} 接收完成", envelope->destination_node->id());
         this->on_post_deliver_event()(this, envelope.get());
     }
 }

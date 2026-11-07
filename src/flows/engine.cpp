@@ -2,8 +2,7 @@
 #include "edgelink/flows/dependency-sorter.hpp"
 #include "./engine.hpp"
 
-using namespace boost;
-namespace this_coro = boost::asio::this_coro;
+namespace this_coro = edgelink::this_coro;
 
 namespace edgelink {
 
@@ -11,7 +10,7 @@ Engine::Engine(const EdgeLinkSettings& el_config, const IFlowFactory& flow_facto
     : _logger(spdlog::default_logger()->clone("Engine")), _settings(el_config), _flow_factory(flow_factory),
       _flows_json_path(el_config.flows_json_path) {
 
-    // std::vector<std::unique_ptr<IFlow>> create_flows(const boost::json::array& flows_config);
+    // std::vector<std::unique_ptr<IFlow>> create_flows(const JsonArray& flows_config);
 }
 
 Engine::~Engine() {
@@ -19,8 +18,8 @@ Engine::~Engine() {
     // TODO 同步关闭
     _logger->info("流程引擎清理中...");
 
-    asio::io_context io_context(1);
-    asio::co_spawn(io_context, this->async_stop(), asio::detached);
+    IoContext io_context(1);
+    co_spawn(io_context, this->async_stop(), Detached{});
     io_context.run();
 
     _logger->info("流程引擎已关闭");
@@ -28,7 +27,7 @@ Engine::~Engine() {
 
 Awaitable<void> Engine::async_start() {
 
-    auto executor = co_await boost::asio::this_coro::executor;
+    auto executor = co_await this_coro::executor();
     // TODO 检查是否在运行
 
     _logger->info("流程引擎 > 开始加载流配置：'{0}'", _flows_json_path);
@@ -36,8 +35,8 @@ Awaitable<void> Engine::async_start() {
     _flows.clear();
 
     std::ifstream flows_file(_flows_json_path);
-    auto flows_config =
-        boost::json::parse(flows_file, {}, {.allow_comments = true, .allow_trailing_commas = true}).as_array();
+    // 注：nlohmann 默认支持注释；trailing comma 需 parse 选项（JSON 标准不允许，这里用宽松 parse）
+    JsonArray flows_config = JsonArray::parse(flows_file);
 
     if (flows_config.size() == 0) {
         throw BadFlowConfigException("There are no node in the configuration file of the flows!");
@@ -59,12 +58,12 @@ Awaitable<void> Engine::async_start() {
 
     for (auto& node : _global_nodes) {
         _logger->debug("正在启动全局节点：{0}", node->id());
-        boost::asio::co_spawn(executor, node->async_start(), boost::asio::detached);
+        co_spawn(executor, node->async_start(), Detached{});
     }
 
     for (auto& flow : _flows) {
         _logger->debug("正在启动流程：{0}", flow->id());
-        boost::asio::co_spawn(executor, flow->async_start(), boost::asio::detached);
+        co_spawn(executor, flow->async_start(), Detached{});
     }
     _logger->info("流程引擎已启动");
 }

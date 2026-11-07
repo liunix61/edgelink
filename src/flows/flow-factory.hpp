@@ -1,5 +1,7 @@
 #pragma once
 
+#include "edgelink/json.hpp"
+
 namespace edgelink {
 
 struct IStandaloneNode;

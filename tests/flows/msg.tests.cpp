@@ -20,7 +20,7 @@ TEST_CASE("Test Msg class") {
     )";
 
     SECTION("Test adding edges and sorting") {
-        auto MSG_JSON_VALUE = boost::json::parse(MSG_JSON).as_object();
+        auto MSG_JSON_VALUE = nlohmann::json::parse(MSG_JSON);
         auto msg1 = Msg(MSG_JSON_VALUE);
 
         msg1.at_propex("payload.hostInfo.memoryUsage") = 100;

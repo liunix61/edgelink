@@ -27,8 +27,7 @@ JsonValue const& Msg::at_propex(const std::string_view propex) const& {
             if (propex::kind(ps) != propex::PropertySegmentKind::IDENTIFIER) {
                 throw InvalidDataException("Bad propex");
             }
-            std::string key(std::get<std::string_view>(ps));
-            presult = &_data.at(std::get<std::string_view>(ps));
+            presult = &_data.at(std::string(std::get<std::string_view>(ps)));
         } else {
             if (propex::kind(ps) == propex::PropertySegmentKind::IDENTIFIER) {
                 std::string key(std::get<std::string_view>(ps));

@@ -25,11 +25,11 @@ using namespace edgelink;
 */
 
 static double parse_json_number(const JsonObject& config, const std::string_view prop) {
-    const auto& str_value = config.at(prop).as_string();
+    const std::string str_value = config.at(prop).get<std::string>();
     if (str_value.empty()) {
         return NAN;
     }
-    return boost::lexical_cast<double>(str_value.c_str());
+    return std::stod(str_value);
 }
 
 class RangeNode : public FlowNode {
@@ -40,9 +40,9 @@ class RangeNode : public FlowNode {
           _maxin(parse_json_number(config, "maxin")),   //
           _minout(parse_json_number(config, "minout")), //
           _maxout(parse_json_number(config, "maxout")), //
-          _action(config.at("action").as_string()),     //
-          _round(config.at("round").as_bool()),         //
-          _property(config.at("property").as_string())  //
+          _action(config.at("action").get<std::string>()),     //
+          _round(config.at("round").get<bool>()),         //
+          _property(config.at("property").get<std::string>())  //
     {
         //
     }
@@ -71,7 +71,7 @@ class RangeNode : public FlowNode {
             co_return;
         }
         if (value.is_number()) {
-            double n = value.to_number<double>();
+            double n = value.get<double>();
             if (_action == "clamp") {
                 if (n < _minin) {
                     n = _minin;

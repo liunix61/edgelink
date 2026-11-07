@@ -4,12 +4,11 @@
 
 namespace edgelink {
 
-using namespace boost;
-namespace this_coro = boost::asio::this_coro;
+namespace this_coro = edgelink::this_coro;
 
 Awaitable<void> App::run_async() {
 
-    auto executor = co_await this_coro::executor;
+    auto executor = co_await this_coro::executor();
     // auto self = shared_from_this();
 
     try {
@@ -18,8 +17,8 @@ Awaitable<void> App::run_async() {
         SPDLOG_ERROR("流程引擎启动异常：{0}", ex.what());
         co_return;
     }
-    asio::co_spawn(
-        executor, [self = this->shared_from_this()] { return self->idle_loop(); }, asio::detached);
+    co_spawn(
+        executor, [self = this->shared_from_this()] { return self->idle_loop(); }, Detached{});
 
     // co_await this->idle_loop();
     co_return;
@@ -35,19 +34,19 @@ Awaitable<void> App::stop_async() const {
 }
 
 Awaitable<void> App::idle_loop() {
-    auto executor = co_await this_coro::executor;
-    auto cs = co_await boost::asio::this_coro::cancellation_state;
+    auto executor = co_await this_coro::executor();
     // 引擎
     SPDLOG_INFO("正在启动 IDLE 协程");
     // 阻塞
     for (;;) {
-        if (cs.cancelled() != boost::asio::cancellation_type::none) {
+        // 简化：cancellation_state 用 _stop_requested 原子标志（stop_async 由 main 信号触发）
+        if (_stop_requested.load()) {
             SPDLOG_INFO("IDLE 协程停止中...");
             break;
         }
         // 协程 IDLE
-        asio::steady_timer timer(executor, std::chrono::milliseconds(1000));
-        co_await timer.async_wait(asio::use_awaitable);
+        SteadyTimer timer(executor, std::chrono::milliseconds(1000));
+        co_await timer.async_wait();
     }
     SPDLOG_INFO("IDLE 协程已结束");
     co_return;

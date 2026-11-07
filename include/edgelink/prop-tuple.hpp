@@ -1,10 +1,12 @@
 #pragma once
 
-#include <boost/json/value.hpp>
+#include "edgelink/json.hpp"
+#include <string>
+#include <vector>
 
 namespace edgelink {
 
-using Variant = boost::json::value;
+using Variant = JsonValue;
 
 enum class PropValueType {
     STR = 0,
@@ -27,6 +29,8 @@ struct PropTuple {
     Variant value;
 };
 
+EDGELINK_EXPORT PropValueType prop_value_type_from_json(const JsonValue& jv);
+EDGELINK_EXPORT PropTuple prop_tuple_from_json(const JsonValue& jv);
 EDGELINK_EXPORT std::vector<PropTuple> from_json(const JsonValue& jv);
 
 }; // namespace edgelink

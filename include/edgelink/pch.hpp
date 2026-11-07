@@ -12,6 +12,10 @@
 #include <map>
 #include <queue>
 #include <variant>
+#include <functional>
+#include <mutex>
+#include <optional>
+#include <charconv>
 
 #include <chrono>
 #include <fstream>
@@ -20,14 +24,13 @@
 #include <type_traits>
 #include <filesystem>
 
-#include <boost/asio.hpp>
-#include <boost/static_string.hpp>
-#include <boost/container/static_vector.hpp>
-#include <boost/url.hpp>
-#include <boost/json.hpp>
-#include <boost/signals2.hpp>
-#include <boost/lexical_cast.hpp>
+// 自研替代（零 Boost）：协程运行时 + 信号槽 + 非拷贝基类
+#include "edgelink/coroutine.hpp"
+#include "edgelink/signal.hpp"
+#include "edgelink/common.hpp"
 
+// 去 Boost.Asio/static_string/container/url/json/signals2/lexical_cast
+// （逐步替换为自研/标准库实现）
 
 #include <fmt/chrono.h>
 #include <fmt/core.h>

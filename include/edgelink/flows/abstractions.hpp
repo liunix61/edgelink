@@ -1,6 +1,7 @@
 #pragma once
 
 #include "edgelink/utils.hpp"
+#include "edgelink/signal.hpp"
 
 namespace edgelink {
 
@@ -28,7 +29,7 @@ class EDGELINK_EXPORT FlowContext {
 };
 
 /// @brief 路由中的消息封装
-struct EDGELINK_EXPORT Envelope : private boost::noncopyable {
+struct EDGELINK_EXPORT Envelope : private Noncopyable {
     MsgPtr msg;
     bool clone_message;
     IFlowNode* source_node = nullptr;
@@ -42,15 +43,15 @@ struct EDGELINK_EXPORT Envelope : private boost::noncopyable {
           destination_node(dest_node) {}
 };
 
-using FlowOnSendEvent = boost::signals2::signal<void(IFlow* sender, std::vector<std::unique_ptr<Envelope>>& env)>;
-using FlowPreRouteEvent = boost::signals2::signal<void(IFlow* sender, Envelope* env)>;
-using FlowPreDeliverEvent = boost::signals2::signal<void(IFlow* sender, Envelope* env)>;
-using FlowPostDeliverEvent = boost::signals2::signal<void(IFlow* sender, Envelope* env)>;
+using FlowOnSendEvent = Signal<void(IFlow* sender, std::vector<std::unique_ptr<Envelope>>& env)>;
+using FlowPreRouteEvent = Signal<void(IFlow* sender, Envelope* env)>;
+using FlowPreDeliverEvent = Signal<void(IFlow* sender, Envelope* env)>;
+using FlowPostDeliverEvent = Signal<void(IFlow* sender, Envelope* env)>;
 
-using NodeOnReceiveEvent = boost::signals2::signal<Awaitable<void>(IFlowNode* sender, MsgPtr msg)>;
-using NodePostReceiveEvent = boost::signals2::signal<Awaitable<void>(IFlowNode* sender, MsgPtr msg)>;
-using OnDoneEvent = boost::signals2::signal<Awaitable<void>(IFlow* sender, MsgPtr msg)>;
-using OnErrorEvent = boost::signals2::signal<Awaitable<void>(IFlow* sender, MsgPtr msg)>;
+using NodeOnReceiveEvent = Signal<Awaitable<void>(IFlowNode* sender, MsgPtr msg)>;
+using NodePostReceiveEvent = Signal<Awaitable<void>(IFlowNode* sender, MsgPtr msg)>;
+using OnDoneEvent = Signal<Awaitable<void>(IFlow* sender, MsgPtr msg)>;
+using OnErrorEvent = Signal<Awaitable<void>(IFlow* sender, MsgPtr msg)>;
 
 /// @brief 消息流
 struct EDGELINK_EXPORT IFlow {
@@ -90,10 +91,10 @@ struct EDGELINK_EXPORT IFlow {
 /// @brief 流工厂
 struct EDGELINK_EXPORT IFlowFactory {
 
-    virtual std::vector<std::unique_ptr<IFlow>> create_flows(const boost::json::array& flows_config,
+    virtual std::vector<std::unique_ptr<IFlow>> create_flows(const JsonArray& flows_config,
                                                              IEngine* engine) const = 0;
 
-    virtual std::vector<std::unique_ptr<IStandaloneNode>> create_global_nodes(const boost::json::array& flows_config,
+    virtual std::vector<std::unique_ptr<IStandaloneNode>> create_global_nodes(const JsonArray& flows_config,
                                                                               IEngine* engine) const = 0;
 };
 
@@ -143,8 +144,8 @@ struct IStandaloneNode : public INode {
 class EDGELINK_EXPORT StandaloneNode : public IStandaloneNode {
   protected:
     StandaloneNode(const std::string_view id, const INodeDescriptor* desc, const JsonObject& config, IEngine* engine)
-        : _logger(spdlog::default_logger()->clone(fmt::format("NODE({}:{})", config.at("type").as_string(), id))),
-          _id(id), _type(config.at("type").as_string()),
+        : _logger(spdlog::default_logger()->clone(fmt::format("NODE({}:{})", config.at("type").get<std::string>(), id))),
+          _id(id), _type(config.at("type").get<std::string>()),
           _name(edgelink::value_or(config, "name", std::string_view(""))),
           _disabled(edgelink::value_or(config, "d", false)), _descriptor(desc), _engine(engine) {
         // constructor
@@ -190,8 +191,8 @@ struct EDGELINK_EXPORT IFlowNode : public INode {
 class EDGELINK_EXPORT FlowNode : public IFlowNode {
   protected:
     FlowNode(const std::string_view id, const INodeDescriptor* desc, IFlow* flow, const JsonObject& config)
-        : _logger(spdlog::default_logger()->clone(fmt::format("NODE({}:{})", config.at("type").as_string(), id))),
-          _id(id), _type(config.at("type").as_string()),
+        : _logger(spdlog::default_logger()->clone(fmt::format("NODE({}:{})", config.at("type").get<std::string>(), id))),
+          _id(id), _type(config.at("type").get<std::string>()),
           _name(edgelink::value_or(config, "name", std::string_view(""))),
           _disabled(edgelink::value_or(config, "d", false)), _flow(flow), _descriptor(desc),
           _output_ports(std::move(FlowNode::setup_output_ports(config, flow))) {
@@ -244,10 +245,10 @@ class EDGELINK_EXPORT SourceNode : public FlowNode {
   public:
     Awaitable<void> async_start() override {
         // 线程函数
-        auto executor = co_await boost::asio::this_coro::executor;
+        auto executor = co_await this_coro::executor();
 
         // auto loop = std::bind(&SourceNode::on_async_run, this);
-        boost::asio::co_spawn(executor, this->on_async_run(), boost::asio::detached);
+        co_spawn(executor, this->on_async_run(), Detached{});
         co_return;
     }
 
@@ -277,8 +278,8 @@ class EDGELINK_EXPORT ScopedSourceNode : public SourceNode, public INodeWithScop
   private:
     static std::vector<IFlowNode*> setup_scope(const JsonObject& config, IFlow* flow) {
         std::vector<IFlowNode*> scope;
-        for (auto const& scope_item : config.at("scope").as_array()) {
-            const std::string_view node_id = scope_item.as_string();
+        for (auto const& scope_item : config.at("scope")) {
+            const std::string node_id = scope_item.get<std::string>();
             auto node = flow->get_node(node_id);
             scope.push_back(node);
         }

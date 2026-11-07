@@ -49,46 +49,31 @@ find_package(pegtl REQUIRED)
 # 查找Boost库
 
 #set(Boost_DIR ${_VCPKG_INSTALLED_DIR}) # don't set this one. 
-set(Boost_NO_SYSTEM_PATHS ON)
-#set(Boost_NO_BOOST_CMAKE  ON) # additional set this one
-set(Boost_USE_STATIC_LIBS OFF)
-set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost REQUIRED COMPONENTS system url json program_options)
-set(Boost_MINIMUM_REQUIRED 1.83.0)
-if(Boost_FOUND)
-    include_directories(${Boost_INCLUDE_DIRS})
-endif()
+# 去 Boost：系统 Boost 已移除（源码零 boost:: 引用，boost::di 为 vendor header-only）
 
 
-# 通过 cmake 引入 ASYNC_MQTT 库
-set(_TMP_BUILD_TESTING BUILD_TESTING)
-if(BUILD_TESTING)
-	set(BUILD_TESTING OFF)
-endif()
-
-add_subdirectory(./libs/async_mqtt EXCLUDE_FROM_ALL)
+# 去 Boost：async_mqtt（内部 boost::asio）已用 NanoSDK 替代，不再编译
 add_subdirectory(./libs/quickjspp/quickjs EXCLUDE_FROM_ALL)
 add_subdirectory(./libs/rttr EXCLUDE_FROM_ALL)
 add_subdirectory(./libs/meta.hpp EXCLUDE_FROM_ALL)
 
-set(BUILD_TESTING _TMP_BUILD_TESTING)
+# 测试构建默认开启（EdgeLinkTests 由 BUILD_TESTING 控制）
+set(BUILD_TESTING ON)
 
 include_directories(
     ${CMAKE_BINARY_DIR}
     ./include
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/mustache/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/async_mqtt/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/rva/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/boost-di/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/croncpp/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/quickjspp"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/meta.hpp/headers"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libs/nlohmann"
 )
 
 file(GLOB_RECURSE EL_SOURCES 
     "src/*.c"
     "src/*.cpp"
-    "./libs/mustache/src/renderer.cpp"
 )
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
@@ -108,10 +93,8 @@ add_dependencies(${PROJECT_NAME} quickjs)
 
 # target_compile_options(${PROJECT_NAME} PRIVATE -fno-rtti), 不要关掉 RTTI
 
+# 去 Boost：系统 Boost 已移除（Boost::system/json/url/program_options），改用自研协程 + nlohmann + boost::di(vendor)
 set(EL_DEP_LIBS
-    PRIVATE Boost::system
-    PRIVATE Boost::json
-    PRIVATE Boost::url
     PRIVATE spdlog::spdlog
     PRIVATE fmt::fmt
     PRIVATE RTTR::Core
@@ -122,7 +105,6 @@ set(EL_DEP_LIBS
 
 target_link_libraries(${PROJECT_NAME}
     ${EL_DEP_LIBS}
-    PRIVATE Boost::program_options
 )
 
 add_definitions(-DBOOST_LOG_DYN_LINK)
@@ -153,6 +135,8 @@ if(BUILD_TESTING)
         "tests/*.c"
         "tests/*.cpp"
     )
+    # coroutine-smoke.cpp 有自己的 main（独立可执行），从 EdgeLinkTests 排除避免覆盖 Catch2WithMain
+    list(REMOVE_ITEM TESTS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/coroutine-smoke.cpp")
 
     # 指定测试可执行文件的名称
     add_executable(EdgeLinkTests
@@ -212,7 +196,6 @@ macro(edgelink_plugin PLUGIN_NAME)
 
     target_link_libraries(
         ${THIS_PLUGIN}
-        PRIVATE Boost::json
         PRIVATE spdlog::spdlog
         PRIVATE fmt::fmt
         PRIVATE RTTR::Core

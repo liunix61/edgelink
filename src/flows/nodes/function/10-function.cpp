@@ -113,19 +113,19 @@ class FunctionNode : public FlowNode {
     FunctionNode(const std::string_view id, const JsonObject& config, const INodeDescriptor* desc, IFlow* flow)
         : FlowNode(id, desc, flow, config),
           _outputs(edgelink::value_or(config, "outputs", static_cast<size_t>(1))),
-          _func(config.if_contains("func") ? std::string(config.at("func").as_string()) : std::string()),
-          _initialize(config.if_contains("initialize") ? std::string(config.at("initialize").as_string())
-                                                       : std::string()),
-          _finalize(config.if_contains("finalize") ? std::string(config.at("finalize").as_string())
+          _func(config.contains("func") ? std::string(config.at("func").get<std::string>()) : std::string()),
+          _initialize(config.contains("initialize") ? std::string(config.at("initialize").get<std::string>())
                                                    : std::string()),
+          _finalize(config.contains("finalize") ? std::string(config.at("finalize").get<std::string>())
+                                                : std::string()),
           _runtime(), _context(_runtime) {
 
-        if (auto libs_value = config.if_contains("libs")) {
-            for (auto const& module_json : libs_value->as_array()) {
-                auto const& entry = module_json.as_object();
+        if (auto it = config.find("libs"); it != config.end()) {
+            for (auto const& module_json : *it) {
+                auto const& entry = module_json;
                 auto me = ModuleEntry{
-                    std::string(entry.at("module").as_string()),
-                    std::string(entry.at("var").as_string()),
+                    std::string(entry.at("module").get<std::string>()),
+                    std::string(entry.at("var").get<std::string>()),
                 };
                 _modules.emplace_back(std::move(me));
             }
@@ -212,20 +212,20 @@ class FunctionNode : public FlowNode {
             const std::string result_json = _user_func_cb(eval_ctx, msg_json_text);
 
             // 后续处理执行成果
-            auto js_result = boost::json::parse(result_json);
+            auto js_result = nlohmann::json::parse(result_json);
 
             if (js_result.is_null()) {
                 // 修复：function 返回 null（Node-RED 合法语义：丢弃消息）——原被当错误
                 co_return;
-            } else if (js_result.kind() == JsonKind::array) { // 多个端口消息的情况
-                auto array = js_result.as_array();
+            } else if (js_result.is_array()) { // 多个端口消息的情况
+                auto& array = js_result;
                 // 修复：数组含 null 元素（Node-RED 合法：[null, msg] 表示第 0 端口不发）——按对象元素过滤
                 std::vector<std::shared_ptr<Msg>> msgs;
 
                 for (auto& msg_json_value : array) {
                     // 直接分发消息，只有是对象的才分发
-                    if (msg_json_value.kind() == JsonKind::object) {
-                        auto msg_json = msg_json_value.as_object();
+                    if (msg_json_value.is_object()) {
+                        auto msg_json = msg_json_value;
                         auto evaled_msg = std::make_shared<Msg>(msg_json, msg->birth_place());
                         msgs.emplace_back(std::move(evaled_msg));
                     }
@@ -236,8 +236,8 @@ class FunctionNode : public FlowNode {
                     throw std::out_of_range(error_msg);
                 }
                 co_await this->async_send_to_many_port(std::forward<std::vector<std::shared_ptr<Msg>>>(msgs));
-            } else if (js_result.kind() == JsonKind::object) { // 单个端口消息的情况
-                auto object_result = js_result.as_object();
+            } else if (js_result.is_object()) { // 单个端口消息的情况
+                auto object_result = js_result;
                 auto evaled_msg = std::make_shared<Msg>(std::move(object_result), msg->birth_place());
                 co_await this->async_send_to_one_port(std::move(evaled_msg));
             } else { // 其他类型不支持

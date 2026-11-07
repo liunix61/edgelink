@@ -1,5 +1,8 @@
 #pragma once
 
+#include <edgelink/coroutine.hpp>
+#include <edgelink/export.hpp>
+#include <memory>
 
 namespace edgelink {
 
@@ -9,10 +12,16 @@ struct EDGELINK_EXPORT IClosable {
 
 using Bytes = std::vector<uint8_t>;
 
-using Noncopyable = boost::noncopyable;
+// Noncopyable 用标准库模式替代 boost::noncopyable
+class Noncopyable {
+  protected:
+    Noncopyable() = default;
+    ~Noncopyable() = default;
+    Noncopyable(const Noncopyable&) = delete;
+    Noncopyable& operator=(const Noncopyable&) = delete;
+};
 
-template <typename T> using Awaitable = boost::asio::awaitable<T>;
-
-template <typename TFuncType> using Signal = boost::signals2::signal<TFuncType>;
+// Awaitable 用自研协程替代 boost::asio::awaitable（零 Boost）
+template <typename T> using Awaitable = edgelink::Task<T>;
 
 }; // namespace edgelink

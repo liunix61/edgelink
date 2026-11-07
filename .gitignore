@@ -22,6 +22,8 @@ Makefile.in
 *.o
 *.stamp
 /build/
+/build-cmake/
+/libs/nanosdk/build/
 
 vcpkg_installed
 

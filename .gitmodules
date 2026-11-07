@@ -26,3 +26,9 @@
 [submodule "libs/meta.hpp"]
 	path = libs/meta.hpp
 	url = git@github.com:BlackMATov/meta.hpp.git
+[submodule "libs/nanosdk"]
+	path = libs/nanosdk
+	url = git@github.com:EMQX/NanoSDK.git
+[submodule "libs/nlohmann"]
+	path = libs/nlohmann
+	url = git@github.com:nlohmann/json.git

@@ -8,14 +8,22 @@ namespace edgelink::plugins::modbus {
 
 ModbusClient::ModbusClient(const std::string_view& url, int baud, char parity, int data_bits, int stop_bits)
     : _modbus(nullptr), baud(baud), parity(parity), dataBits(data_bits), stopBits(stop_bits) {
-    auto uri = boost::urls::parse_uri(url).value();
+    // 去 Boost：自研 URL 解析（替代 boost::urls::parse_uri）——解析 scheme://host
+    auto scheme_end = url.find("://");
+    std::string scheme, host;
+    if (scheme_end != std::string_view::npos) {
+        scheme = std::string(url.substr(0, scheme_end));
+        auto host_start = scheme_end + 3;
+        auto host_end = url.find('/', host_start);
+        host = std::string(url.substr(host_start, host_end == std::string_view::npos ? std::string_view::npos : host_end - host_start));
+    }
 
-    if (uri.scheme() == "tcp") {
+    if (scheme == "tcp") {
         _transport = ModbusTransport::TCP;
-        _device = uri.host_address();
-    } else if (uri.scheme() == "rtu") {
+        _device = host;
+    } else if (scheme == "rtu") {
         _transport = ModbusTransport::RTU;
-        _device = uri.host_address();
+        _device = host;
     } else {
         throw std::exception();
     }

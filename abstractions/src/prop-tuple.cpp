@@ -3,7 +3,8 @@
 
 namespace edgelink {
 
-PropValueType tag_invoke(boost::json::value_to_tag<PropValueType>, JsonValue const& jv) {
+// nlohmann 替代 boost::json tag_invoke/value_to——手动转换
+PropValueType prop_value_type_from_json(const JsonValue& jv) {
     static std::unordered_map<JsonString, PropValueType> mapping({
         {"str", PropValueType::STR},
         {"num", PropValueType::NUM},
@@ -19,17 +20,23 @@ PropValueType tag_invoke(boost::json::value_to_tag<PropValueType>, JsonValue con
         {"env", PropValueType::ENV},
     });
 
-    return mapping.at(jv.as_string());
+    std::string type_str = jv.is_string() ? jv.get<std::string>() : "";
+    auto it = mapping.find(type_str);
+    if (it != mapping.end()) {
+        return it->second;
+    }
+    return PropValueType::STR;
 }
 
-PropTuple tag_invoke(boost::json::value_to_tag<PropTuple>, JsonValue const& jv) {
-    auto const& obj = jv.as_object();
-    auto name = boost::json::value_to<std::string>(obj.at("p"));
-    auto type = boost::json::value_to<PropValueType>(obj.at("vt"));
+PropTuple prop_tuple_from_json(const JsonValue& jv) {
+    auto const& obj = jv.is_object() ? jv : JsonValue::object();
+    auto name = obj.value("p", std::string());
+    auto type = prop_value_type_from_json(obj.value("vt", JsonValue()));
     // 修复：原实现 .value = Variant()（恒 null），完全忽略 v 字段——导致 inject 等节点属性值丢失
     JsonValue value = nullptr;
-    if (auto v = obj.if_contains("v")) {
-        value = *v;
+    auto it = obj.find("v");
+    if (it != obj.end()) {
+        value = *it;
     }
     return PropTuple{
         .name = std::move(name),
@@ -40,9 +47,11 @@ PropTuple tag_invoke(boost::json::value_to_tag<PropTuple>, JsonValue const& jv) 
 
 std::vector<PropTuple> from_json(const JsonValue& jv) {
     std::vector<PropTuple> vec;
-    auto const& jarray = jv.as_array();
-    for (auto const& jitem : jarray) {
-        vec.emplace_back(std::move(boost::json::value_to<PropTuple>(jitem)));
+    if (!jv.is_array()) {
+        return vec;
+    }
+    for (auto const& jitem : jv) {
+        vec.emplace_back(std::move(prop_tuple_from_json(jitem)));
     }
     return vec;
 }

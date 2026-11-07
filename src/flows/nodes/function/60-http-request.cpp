@@ -28,6 +28,7 @@
 
 #include "edgelink/edgelink.hpp"
 
+namespace this_coro = edgelink::this_coro;
 using namespace edgelink;
 
 /*
@@ -169,21 +170,21 @@ class HttpRequestNode : public FlowNode {
   public:
     HttpRequestNode(const std::string_view id, const JsonObject& config, const INodeDescriptor* desc, IFlow* flow)
         : FlowNode(id, desc, flow, config),
-          _method(config.if_contains("method") ? std::string(config.at("method").as_string()) : std::string("GET")),
-          _url(config.if_contains("url") ? std::string(config.at("url").as_string()) : std::string()),
-          _ret(config.if_contains("ret") ? std::string(config.at("ret").as_string()) : std::string("obj")) {}
+          _method(config.contains("method") ? std::string(config.at("method").get<std::string>()) : std::string("GET")),
+          _url(config.contains("url") ? std::string(config.at("url").get<std::string>()) : std::string()),
+          _ret(config.contains("ret") ? std::string(config.at("ret").get<std::string>()) : std::string("obj")) {}
 
     Awaitable<void> async_start() override { co_return; }
 
     Awaitable<void> async_stop() override { co_return; }
 
     Awaitable<void> receive_async(MsgPtr msg) override {
-        auto executor = co_await boost::asio::this_coro::executor;
+        auto executor = co_await this_coro::executor();
 
         // 解析请求 URL（优先 msg.url，其次节点配置）
         std::string url = _url;
         if (msg->data().contains("url")) {
-            url = std::string(msg->data().at("url").as_string());
+            url = std::string(msg->data().at("url").get<std::string>());
         }
         if (url.empty()) {
             this->logger()->warn("http request 节点无 url（节点配置与 msg.url 均为空），跳过");
@@ -193,7 +194,7 @@ class HttpRequestNode : public FlowNode {
         // 方法（优先 msg.method）
         std::string method = _method;
         if (msg->data().contains("method")) {
-            method = std::string(msg->data().at("method").as_string());
+            method = std::string(msg->data().at("method").get<std::string>());
         }
 
         // 请求体（POST/PUT 时取 msg.payload 字符串化）
@@ -202,9 +203,9 @@ class HttpRequestNode : public FlowNode {
             if (msg->data().contains("payload")) {
                 auto const& payload = msg->data().at("payload");
                 if (payload.is_string()) {
-                    body = std::string(payload.as_string());
+                    body = std::string(payload.get<std::string>());
                 } else {
-                    body = boost::json::serialize(payload);
+                    body = payload.dump();
                 }
             }
         }
@@ -220,7 +221,7 @@ class HttpRequestNode : public FlowNode {
             msg->data()["payload"] = "HTTP request failed (ret=" + std::to_string(ret) + ")";
             msg->data()["statusCode"] = -1;
             auto send_future = this->async_send_to_one_port(msg);
-            boost::asio::co_spawn(executor, std::move(send_future), boost::asio::detached);
+            co_spawn(executor, std::move(send_future), Detached{});
             co_return;
         }
 
@@ -245,7 +246,7 @@ class HttpRequestNode : public FlowNode {
         // payload：按 ret 配置解析
         if (_ret == "obj" || _ret == "json") {
             try {
-                msg->data()["payload"] = boost::json::parse(resp_body);
+                msg->data()["payload"] = nlohmann::json::parse(resp_body);
             } catch (const std::exception&) {
                 msg->data()["payload"] = resp_body;
             }

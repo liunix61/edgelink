@@ -1,5 +1,12 @@
 #pragma once
 
+#include "edgelink/common.hpp"
+
+#include <cstdint>
+#include <string>
+#include <variant>
+#include <vector>
+
 namespace edgelink {
 
 struct IFlowNode;
@@ -16,20 +23,22 @@ enum class MsgValueKind : unsigned char {
     BUFFER,
 };
 
-using MsgValue = boost::variant< //
-    std::nullptr_t,              //
-    double,                      //
-    int64_t,                     //
-    bool,                        //
-    std::string,                 //
-    std::vector<uint8_t>         //
+using MsgValue = std::variant< //
+    std::nullptr_t,           //
+    double,                   //
+    int64_t,                  //
+    bool,                     //
+    std::string,              //
+    std::vector<uint8_t>      //
     >;
 
-inline MsgValueKind kind(const MsgValue& value) { return static_cast<MsgValueKind>(value.which()); }
+inline MsgValueKind kind(const MsgValue& value) {
+    return static_cast<MsgValueKind>(value.index());
+}
 
 struct FlowNode;
 
-class EDGELINK_EXPORT Msg final : private boost::noncopyable {
+class EDGELINK_EXPORT Msg final : private Noncopyable {
   public:
     Msg(IFlowNode* birth_place = nullptr) : Msg(Msg::generate_msg_id(), birth_place) {}
 
@@ -47,7 +56,7 @@ class EDGELINK_EXPORT Msg final : private boost::noncopyable {
     JsonObject const& data() const { return _data; }
 
     MsgID id() const {
-        MsgID id = _data.at("_msgid").to_number<MsgID>();
+        MsgID id = _data.at("_msgid").get<MsgID>();
         return id;
     }
 
@@ -65,8 +74,8 @@ class EDGELINK_EXPORT Msg final : private boost::noncopyable {
 
     std::shared_ptr<Msg> clone(bool new_id = true) const;
 
-    inline const JsonString to_json_string() const { return JsonString(std::move(boost::json::serialize(_data))); }
-    inline const std::string to_string() const { return boost::json::serialize(_data); }
+    inline const JsonString to_json_string() const { return JsonString(std::move(_data.dump())); }
+    inline const std::string to_string() const { return _data.dump(); }
 
     JsonValue const& at_propex(const std::string_view propex) const&;
 
@@ -76,7 +85,7 @@ class EDGELINK_EXPORT Msg final : private boost::noncopyable {
     }
     JsonValue&& at_propex(const std::string_view propex) && { return std::move(this->at_propex(propex)); }
 
-    JsonValue const& at(const std::string_view prop) const& { return _data.at(prop); }
+    JsonValue const& at(const std::string_view prop) const& { return _data.at(std::string(prop)); }
 
     JsonValue& at(const std::string_view prop) & {
         auto const& self = *this;
@@ -86,7 +95,7 @@ class EDGELINK_EXPORT Msg final : private boost::noncopyable {
     JsonValue&& at(const std::string_view prop) && { return std::move(this->at(prop)); }
 
     void insert_or_assign(const std::string_view prop_expr, JsonValue&& value) {
-        this->data().insert_or_assign(prop_expr, std::move(value));
+        this->data()[std::string(prop_expr)] = std::move(value);
     }
 
     static MsgID generate_msg_id();

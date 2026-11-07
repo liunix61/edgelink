@@ -93,19 +93,53 @@ Registry::get_standalone_node_provider(const std::string_view& type_name) const 
 
 void Registry::register_node_provider(const rttr::type& provider_type) {
 
-    auto flow_node_provider_type = rttr::type::get<IFlowNodeProvider>();
-    auto standalone_node_provider_type = rttr::type::get<IStandaloneNodeProvider>();
+    // 修复：RTTR 跨 DSO 的继承元数据不共享——get_value<IStandaloneNodeProvider*> 对 flow 节点也误判。
+    // 改用 INodeProvider*（公共基类）创建 + descriptor()->kind() 精确判断 STANDALONE vs FLOW。
+    auto provider_obj = provider_type.create();
+    if (!provider_obj.is_valid()) {
+        _logger->error("无法创建节点提供器: '{}'", std::string(provider_type.get_name()));
+        return;
+    }
 
-    if (provider_type.is_derived_from(flow_node_provider_type)) {
-        auto provider = provider_type.create().get_value<IFlowNodeProvider*>();
+    // 先尝试 INodeProvider*（公共基类，RTTR 转换对同 TU 可靠）
+    auto* provider_base = provider_obj.get_value<INodeProvider*>();
+    if (provider_base) {
+        auto desc = provider_base->descriptor();
+        if (desc && desc->kind() == NodeKind::STANDALONE) {
+            auto provider = provider_obj.get_value<IStandaloneNodeProvider*>();
+            _logger->info("注册独立节点提供器: '{}'", desc->type_name());
+            _standalone_node_providers.emplace(desc->type_name(), std::move(provider));
+        } else if (desc) {
+            auto provider = provider_obj.get_value<IFlowNodeProvider*>();
+            _logger->info("注册流程节点提供器: '{}'", desc->type_name());
+            _flow_node_providers.emplace(desc->type_name(), std::move(provider));
+        } else {
+            _logger->error("节点提供器无 descriptor: '{}'", std::string(provider_type.get_name()));
+        }
+        return;
+    }
+
+    // 回退：get_value<INodeProvider*> 失败（跨 DSO）——用类型名判断（含 Standalone/Broker）
+    auto provider_name = std::string(provider_type.get_name());
+    auto is_standalone_name =
+        provider_name.find("Standalone") != std::string::npos || provider_name.find("Broker") != std::string::npos;
+    if (is_standalone_name) {
+        auto* raw = provider_obj.get_value<void*>();
+        if (raw) {
+            auto* standalone_ptr = static_cast<IStandaloneNodeProvider*>(raw);
+            auto desc = standalone_ptr->descriptor();
+            _logger->info("注册独立节点提供器: '{}'", desc->type_name());
+            _standalone_node_providers.emplace(desc->type_name(), std::move(standalone_ptr));
+            return;
+        }
+    }
+
+    // 最后尝试 flow 转换
+    auto provider = provider_obj.get_value<IFlowNodeProvider*>();
+    if (provider) {
         auto desc = provider->descriptor();
         _logger->info("注册流程节点提供器: '{}'", desc->type_name());
         _flow_node_providers.emplace(desc->type_name(), std::move(provider));
-    } else if (provider_type.is_derived_from(standalone_node_provider_type)) {
-        auto provider = provider_type.create().get_value<IStandaloneNodeProvider*>();
-        auto desc = provider->descriptor();
-        _logger->info("注册流程节点提供器: '{}'", desc->type_name());
-        _standalone_node_providers.emplace(desc->type_name(), std::move(provider));
     } else {
         _logger->error("未知的节点提供器: '{}'", std::string(provider_type.get_name()));
     }

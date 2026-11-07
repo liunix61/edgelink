@@ -4,8 +4,7 @@
 #include "edgelink/edgelink.hpp"
 #include "edgelink/propex.hpp"
 
-namespace this_coro = boost::asio::this_coro;
-namespace asio = boost::asio;
+namespace this_coro = edgelink::this_coro;
 
 using namespace edgelink;
 
@@ -55,14 +54,14 @@ struct PropertyEntry {
     }
 
     explicit PropertyEntry(const JsonObject& obj) {
-        this->p = std::string(obj.at("p").as_string());
+        this->p = std::string(obj.at("p").get<std::string>());
 
-        if (auto jvt = obj.if_contains("vt")) {
-            this->vt = std::string(jvt->as_string());
+        if (auto it = obj.find("vt"); it != obj.end()) {
+            this->vt = it->get<std::string>();
         }
 
-        if (auto jv = obj.if_contains("v")) {
-            this->v = *jv;
+        if (auto it = obj.find("v"); it != obj.end()) {
+            this->v = *it;
         }
     }
 };
@@ -70,40 +69,40 @@ struct PropertyEntry {
 class InjectNode : public SourceNode {
   public:
     InjectNode(const std::string_view id, const JsonObject& config, const INodeDescriptor* desc, IFlow* flow)
-        : SourceNode(id, desc, flow, config), _once(config.at("once").as_bool()) {
+        : SourceNode(id, desc, flow, config), _once(config.at("once").get<bool>()) {
 
-        if (auto props_value = config.if_contains("props")) {
-            for (auto const& prop : props_value->as_array()) {
-                auto const& entry = prop.as_object();
+        if (auto it = config.find("props"); it != config.end()) {
+            for (auto const& prop : *it) {
+                auto const& entry = prop;
                 PropertyEntry pe(entry);
                 _props.emplace_back(std::move(pe));
             }
         }
 
         /* Handle legacy */
-        if (config.if_contains("props")) {
+        if (config.contains("props")) {
             for (size_t i = 0, l = _props.size(); i < l; i++) {
                 if (_props.at(i).p == "payload" && !_props[i].v) {
                     _props[i].v = config.at("payload");
-                    _props[i].vt = std::string(config.at("payloadType").as_string());
+                    _props[i].vt = std::string(config.at("payloadType").get<std::string>());
                 } else if (_props.at(i).p == "topic" && _props.at(i).vt == "str" && !_props.at(i).v) {
                     _props[i].v = config.at("topic");
                 }
             }
         } else {
             _props.emplace_back(
-                PropertyEntry("payload", std::string(config.at("payloadType").as_string()), config.at("payload")));
+                PropertyEntry("payload", std::string(config.at("payloadType").get<std::string>()), config.at("payload")));
 
-            if (auto topic_value = config.if_contains("topic")) {
-                _props.emplace_back(PropertyEntry("topic", "str", *topic_value));
+            if (auto it = config.find("topic"); it != config.end()) {
+                _props.emplace_back(PropertyEntry("topic", "str", *it));
             }
         }
 
-        if (auto repeat_value = config.if_contains("repeat")) {
-            const std::string_view repeat_str = repeat_value->as_string();
+        if (auto it = config.find("repeat"); it != config.end()) {
+            const std::string repeat_str = it->get<std::string>();
             if (!repeat_str.empty()) {
                 try {
-                    _repeat = (uint64_t)std::floor(boost::lexical_cast<double>(repeat_str) * 1000);
+                    _repeat = (uint64_t)std::floor(std::stod(std::string(repeat_str)) * 1000);
                 } catch (const std::exception& ex) {
                     this->logger()->warn("inject 节点 repeat 值非法（{0}）：{1}", repeat_str, ex.what());
                     _repeat.reset();
@@ -111,8 +110,8 @@ class InjectNode : public SourceNode {
             }
         }
 
-        if (auto crontab_value = config.if_contains("crontab")) {
-            const std::string_view crontab_str = crontab_value->as_string();
+        if (auto it = config.find("crontab"); it != config.end()) {
+            const std::string crontab_str = it->get<std::string>();
             if (!crontab_str.empty()) {
                 try {
                     _cron = ::cron::make_cron(crontab_str);
@@ -123,15 +122,15 @@ class InjectNode : public SourceNode {
             }
         }
 
-        if (auto once_delay_value = config.if_contains("onceDelay")) {
+        if (auto it = config.find("onceDelay"); it != config.end()) {
             double once_delay = 0.1;
-            if (once_delay_value->is_number()) {
-                once_delay = once_delay_value->to_number<double>();
-            } else if (once_delay_value->is_string()) {
-                const auto str = once_delay_value->as_string();
+            if (it->is_number()) {
+                once_delay = it->get<double>();
+            } else if (it->is_string()) {
+                const auto str = it->get<std::string>();
                 if (!str.empty()) {
                     try {
-                        once_delay = boost::lexical_cast<double>(str);
+                        once_delay = std::stod(str);
                     } catch (const std::exception&) {
                         once_delay = 0.1;
                     }
@@ -145,9 +144,12 @@ class InjectNode : public SourceNode {
 
   protected:
     Awaitable<void> on_async_run() override {
-        auto executor = co_await this_coro::executor;
+        auto executor = co_await this_coro::executor();
+        this->logger()->info("inject on_async_run 执行：once={}, repeat={}, cron={}", _once, _repeat ? *_repeat : 0,
+                             _cron ? true : false);
 
         if (_once) {
+            this->logger()->info("inject once 分支：执行 async_once_task");
             co_await this->async_once_task(executor);
         }
 
@@ -186,13 +188,13 @@ class InjectNode : public SourceNode {
         return msg;
     }
 
-    Awaitable<void> async_once_task(asio::any_io_executor executor) {
+    Awaitable<void> async_once_task(Executor executor) {
         auto msg = this->create_msg();
         co_await this->async_send_to_one_port(std::move(msg));
         co_return;
     }
 
-    Awaitable<void> async_cron_task(asio::any_io_executor executor) {
+    Awaitable<void> async_cron_task(Executor executor) {
         while (!_stop_requested.load()) {
             std::time_t now = std::time(0);
             std::time_t next = ::cron::cron_next(*_cron, now);
@@ -203,8 +205,8 @@ class InjectNode : public SourceNode {
                 break;
             }
 
-            asio::steady_timer timer(executor, std::chrono::milliseconds(sleep_time));
-            co_await timer.async_wait(asio::use_awaitable);
+            SteadyTimer timer(executor, std::chrono::milliseconds(sleep_time));
+            co_await timer.async_wait();
 
             if (_stop_requested.load()) {
                 break;
@@ -215,7 +217,7 @@ class InjectNode : public SourceNode {
         co_return;
     }
 
-    Awaitable<void> async_repeat_task(asio::any_io_executor executor) {
+    Awaitable<void> async_repeat_task(Executor executor) {
 
         while (!_stop_requested.load()) {
             // 防御：repeat 周期为 0 会导致忙循环（毫秒定时器 0 间隔）——跳过无效周期
@@ -223,8 +225,8 @@ class InjectNode : public SourceNode {
                 this->logger()->warn("inject 节点 repeat 周期为 0，跳过本次触发");
                 break;
             }
-            asio::steady_timer timer(executor, std::chrono::milliseconds(*_repeat));
-            co_await timer.async_wait(asio::use_awaitable);
+            SteadyTimer timer(executor, std::chrono::milliseconds(*_repeat));
+            co_await timer.async_wait();
 
             if (_stop_requested.load()) {
                 break;
