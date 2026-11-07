@@ -14,7 +14,13 @@ class BlackholeNode : public SinkNode {
 
     Awaitable<void> receive_async(MsgPtr msg) override {
         // 修复：Msg 的消息 ID 存在 "_msgid" 字段（非 "id"）——原来 at("id") 找不到键会崩溃
-        MsgID msg_id = msg->data().at("_msgid").get<MsgID>();
+        // 防御：外部注入的 msg 可能无 _msgid——contains 检查，缺省用 0
+        MsgID msg_id = 0;
+        if (msg->data().contains("_msgid")) {
+            msg_id = msg->data().at("_msgid").get<MsgID>();
+        } else {
+            this->logger()->warn("blackhole 收到无 _msgid 的消息，使用默认 id=0");
+        }
         spdlog::info("BlackholeNode > 吃掉了消息：[msg.id={0}]", msg_id);
         co_return;
     }

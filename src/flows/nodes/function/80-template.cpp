@@ -89,9 +89,17 @@ class TemplateNode : public FlowNode {
     Awaitable<void> async_stop() override { co_return; }
 
     Awaitable<void> receive_async(MsgPtr msg) override {
+        // 修复：msg 可能无 _field 字段（上游未设置）——原 at(_field) 抛异常，改为 contains 检查 + 缺省空值
+        JsonValue field_value;
+        if (msg->data().contains(_field)) {
+            field_value = msg->data().at(_field);
+        } else {
+            this->logger()->warn("template 节点：msg 无字段 {}（上游未设置），使用空值", _field);
+            field_value = JsonValue("");
+        }
 
         JsonObject wrapped_msg = JsonObject({
-            {_field, JsonValue(msg->data().at(_field))},
+            {_field, std::move(field_value)},
         });
         std::string json_text = render_template(_template, wrapped_msg);
 
