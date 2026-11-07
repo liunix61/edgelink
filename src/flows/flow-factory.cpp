@@ -19,7 +19,12 @@ std::vector<std::unique_ptr<IFlow>> FlowFactory::create_flows(const JsonArray& f
     // auto dataflow_elements = flows_config["dataflow"];
     std::vector<std::unique_ptr<IFlow>> flows;
     for (const auto& json_node_value : flows_config) {
-        const auto& json_node = json_node_value.is_object() ? json_node_value : JsonObject::object();
+        // 修复：`json_node_value.is_object() ? json_node_value : JsonObject::object()` ternary 临时 → json_node 悬垂。
+        //       改为 if-early-continue（非 object 跳过），保证 json_node 引用稳定的 flows_config 元素。
+        if (!json_node_value.is_object()) {
+            continue;
+        }
+        const JsonObject& json_node = json_node_value;
         const std::string type(json_node.at("type").get<std::string>());
         if (type == "tab" || type == "flow") {
             try {

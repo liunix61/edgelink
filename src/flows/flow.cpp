@@ -10,7 +10,8 @@ namespace edgelink::flows {
 
 Flow::Flow(const JsonObject& json_config, IEngine* engine)
     : _logger(spdlog::default_logger()->clone("Flow")), _id(json_config.at("id").get<std::string>()),
-      _label(json_config.at("label").get<std::string>()), _disabled(edgelink::value_or(json_config, "disabled", true)),
+      _label(edgelink::value_or(json_config, "label", std::string_view(""))),
+      _disabled(edgelink::value_or(json_config, "disabled", true)),
       _engine(engine), _nodes() {
     assert(engine != nullptr);
 }

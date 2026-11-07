@@ -29,7 +29,12 @@ PropValueType prop_value_type_from_json(const JsonValue& jv) {
 }
 
 PropTuple prop_tuple_from_json(const JsonValue& jv) {
-    auto const& obj = jv.is_object() ? jv : JsonValue::object();
+    // 修复：`jv.is_object() ? jv : JsonValue::object()` ternary 临时 → obj 悬垂（:33 obj.value 已悬垂）。
+    //       改为 if-early-continue（非 object 返回空 tuple），保证 obj 引用稳定的 jv。
+    if (!jv.is_object()) {
+        return PropTuple{};
+    }
+    auto const& obj = jv;
     auto name = obj.value("p", std::string());
     auto type = prop_value_type_from_json(obj.value("vt", JsonValue()));
     // 修复：原实现 .value = Variant()（恒 null），完全忽略 v 字段——导致 inject 等节点属性值丢失
