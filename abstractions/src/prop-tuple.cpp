@@ -26,10 +26,15 @@ PropTuple tag_invoke(boost::json::value_to_tag<PropTuple>, JsonValue const& jv) 
     auto const& obj = jv.as_object();
     auto name = boost::json::value_to<std::string>(obj.at("p"));
     auto type = boost::json::value_to<PropValueType>(obj.at("vt"));
+    // 修复：原实现 .value = Variant()（恒 null），完全忽略 v 字段——导致 inject 等节点属性值丢失
+    JsonValue value = nullptr;
+    if (auto v = obj.if_contains("v")) {
+        value = *v;
+    }
     return PropTuple{
         .name = std::move(name),
         .type = std::move(type),
-        .value = std::move(Variant()),
+        .value = std::move(value),
     };
 }
 

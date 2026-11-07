@@ -25,6 +25,15 @@ Awaitable<void> App::run_async() {
     co_return;
 }
 
+Awaitable<void> App::stop_async() const {
+    SPDLOG_INFO("App 停止中...");
+    // 先停流程引擎（传播 stop_token 到所有节点协程）
+    co_await _engine->async_stop();
+    // 再停 idle 循环（cancellation 触发）
+    SPDLOG_INFO("App 已停止");
+    co_return;
+}
+
 Awaitable<void> App::idle_loop() {
     auto executor = co_await this_coro::executor;
     auto cs = co_await boost::asio::this_coro::cancellation_state;

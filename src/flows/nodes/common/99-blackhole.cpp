@@ -13,8 +13,8 @@ class BlackholeNode : public SinkNode {
     Awaitable<void> async_stop() override { co_return; }
 
     Awaitable<void> receive_async(MsgPtr msg) override {
-        //
-        MsgID msg_id = msg->data().at("id").to_number<MsgID>();
+        // 修复：Msg 的消息 ID 存在 "_msgid" 字段（非 "id"）——原来 at("id") 找不到键会崩溃
+        MsgID msg_id = msg->data().at("_msgid").to_number<MsgID>();
         spdlog::info("BlackholeNode > 吃掉了消息：[msg.id={0}]", msg_id);
         co_return;
     }

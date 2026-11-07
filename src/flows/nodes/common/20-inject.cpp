@@ -102,20 +102,41 @@ class InjectNode : public SourceNode {
         if (auto repeat_value = config.if_contains("repeat")) {
             const std::string_view repeat_str = repeat_value->as_string();
             if (!repeat_str.empty()) {
-                _repeat = (uint64_t)std::floor(boost::lexical_cast<double>(repeat_str) * 1000);
+                try {
+                    _repeat = (uint64_t)std::floor(boost::lexical_cast<double>(repeat_str) * 1000);
+                } catch (const std::exception& ex) {
+                    this->logger()->warn("inject 节点 repeat 值非法（{0}）：{1}", repeat_str, ex.what());
+                    _repeat.reset();
+                }
             }
         }
 
         if (auto crontab_value = config.if_contains("crontab")) {
             const std::string_view crontab_str = crontab_value->as_string();
             if (!crontab_str.empty()) {
-                _cron = ::cron::make_cron(crontab_str);
+                try {
+                    _cron = ::cron::make_cron(crontab_str);
+                } catch (const std::exception& ex) {
+                    this->logger()->warn("inject 节点 crontab 值非法（{0}）：{1}", crontab_str, ex.what());
+                    _cron.reset();
+                }
             }
         }
 
         if (auto once_delay_value = config.if_contains("onceDelay")) {
-            auto once_delay =
-                *once_delay_value == "" ? 0.1 : once_delay_value->to_number<double>();
+            double once_delay = 0.1;
+            if (once_delay_value->is_number()) {
+                once_delay = once_delay_value->to_number<double>();
+            } else if (once_delay_value->is_string()) {
+                const auto str = once_delay_value->as_string();
+                if (!str.empty()) {
+                    try {
+                        once_delay = boost::lexical_cast<double>(str);
+                    } catch (const std::exception&) {
+                        once_delay = 0.1;
+                    }
+                }
+            }
             if (once_delay != NAN && once_delay > 0) {
                 _once_delay = (uint64_t)std::floor(once_delay * 1000);
             }
@@ -135,10 +156,21 @@ class InjectNode : public SourceNode {
             co_await this->async_repeat_task(executor);
         } else if (_cron) {
             co_await this->async_cron_task(executor);
+        } else if (_once) {
+            // 已经在 async_start 分支处理，此处防御性返回
+            co_return;
         } else {
-            throw std::logic_error("Bad repeat condition");
+            // 既无 repeat 也无 cron 也无 once：无触发源，仅日志警告不抛异常
+            this->logger()->warn("inject 节点无有效触发配置（无 repeat/cron/once），节点不发送消息");
+            co_return;
         }
 
+        co_return;
+    }
+
+    Awaitable<void> async_stop() override {
+        // 请求停止循环（repeat/cron 无限循环检查此标志退出）
+        _stop_requested.store(true);
         co_return;
     }
 
@@ -161,14 +193,22 @@ class InjectNode : public SourceNode {
     }
 
     Awaitable<void> async_cron_task(asio::any_io_executor executor) {
-        while (true) { // TODO  改成等待 stop_token
+        while (!_stop_requested.load()) {
             std::time_t now = std::time(0);
             std::time_t next = ::cron::cron_next(*_cron, now);
             auto sleep_time = (next - now);
+            // 防御：cron 表达式无后续触发点（cron_next 返回 0 或过期）——避免忙循环
+            if (sleep_time <= 0) {
+                this->logger()->warn("inject 节点 cron 表达式无有效触发点，停止触发");
+                break;
+            }
 
             asio::steady_timer timer(executor, std::chrono::milliseconds(sleep_time));
             co_await timer.async_wait(asio::use_awaitable);
 
+            if (_stop_requested.load()) {
+                break;
+            }
             auto msg = this->create_msg();
             co_await this->async_send_to_one_port(std::move(msg));
         }
@@ -177,10 +217,18 @@ class InjectNode : public SourceNode {
 
     Awaitable<void> async_repeat_task(asio::any_io_executor executor) {
 
-        while (true) { // TODO  改成等待 stop_token
+        while (!_stop_requested.load()) {
+            // 防御：repeat 周期为 0 会导致忙循环（毫秒定时器 0 间隔）——跳过无效周期
+            if (*_repeat == 0) {
+                this->logger()->warn("inject 节点 repeat 周期为 0，跳过本次触发");
+                break;
+            }
             asio::steady_timer timer(executor, std::chrono::milliseconds(*_repeat));
             co_await timer.async_wait(asio::use_awaitable);
 
+            if (_stop_requested.load()) {
+                break;
+            }
             auto msg = this->create_msg();
             co_await this->async_send_to_one_port(std::move(msg));
         }
@@ -194,6 +242,7 @@ class InjectNode : public SourceNode {
     bool _once;
     std::optional<uint64_t> _once_delay;
     std::vector<PropertyEntry> _props;
+    std::atomic<bool> _stop_requested{false};
 };
 
 RTTR_REGISTRATION {

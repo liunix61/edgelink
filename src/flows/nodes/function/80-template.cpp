@@ -29,9 +29,15 @@ class TemplateNode : public FlowNode {
         boost::mustache::render(_template, out, wrapped_msg, {});
 
         auto json_text = out.str();
-        auto parsed_msg_field_value = boost::json::parse(json_text);
-
-        msg->data()[_field] = parsed_msg_field_value;
+        // 修复：原实现无条件 boost::json::parse(json_text)——模板输出为纯文本（非 JSON）时崩溃
+        // Node-RED template 节点默认输出字符串；仅当输出是合法 JSON 时才解析，否则保留为字符串
+        try {
+            auto parsed_msg_field_value = boost::json::parse(json_text);
+            msg->data()[_field] = parsed_msg_field_value;
+        } catch (const std::exception&) {
+            // 纯文本输出：保留字符串
+            msg->data()[_field] = json_text;
+        }
 
         co_await this->async_send_to_one_port(msg);
 

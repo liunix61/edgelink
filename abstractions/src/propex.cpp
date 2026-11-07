@@ -64,7 +64,13 @@ template <> struct Action<Identifier> {
 template <> struct Action<ArrayIndexInteger> {
     template <typename ActionInput, typename TData> static void apply(const ActionInput& in, TData& data) {
         auto seg_str = std::string_view(in.begin(), in.end());
-        auto i = boost::lexical_cast<size_t>(seg_str);
+        // 修复：负数/超长索引原 boost::lexical_cast 抛 bad_lexical_cast 未捕获——解析失败返回
+        size_t i = 0;
+        try {
+            i = boost::lexical_cast<size_t>(seg_str);
+        } catch (const std::exception&) {
+            return; // 解析失败，跳过该索引段
+        }
         auto ps = PropertySegment(i);
         data.push_back(std::move(ps));
     }

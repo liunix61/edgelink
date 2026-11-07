@@ -54,8 +54,16 @@ const std::vector<OutputPort> FlowNode::setup_output_ports(const JsonObject& con
     for (const auto& port_config : config.at("wires").as_array()) {
         auto output_wires = std::vector<IFlowNode*>();
         for (const auto& endpoint : port_config.as_array()) {
-            auto out_node = flow->get_node(endpoint.as_string());
-            output_wires.push_back(out_node);
+            // 修复：Node-RED 流中 wires 可能引用不存在的节点 ID（悬空 wire）——原 get_node 抛异常崩溃
+            // 改为容忍：跳过悬空 wire 并记录警告，不中断流程加载
+            auto endpoint_str = endpoint.as_string();
+            try {
+                auto out_node = flow->get_node(endpoint_str);
+                output_wires.push_back(out_node);
+            } catch (const std::exception& ex) {
+                spdlog::warn("节点 (id={}) 的 wires 引用不存在的节点（{}），已跳过该连接：{}", config.at("id").as_string(),
+                             endpoint_str, ex.what());
+            }
         }
         auto port = OutputPort(std::move(output_wires));
         ports.emplace_back(std::move(port));

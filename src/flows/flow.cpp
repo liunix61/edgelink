@@ -36,7 +36,11 @@ Awaitable<void> Flow::async_start() {
 Awaitable<void> Flow::async_stop() {
     // 给出线程池停止信号
     _logger->debug("开始请求流程 '{0}' 停止...", this->id());
-    _stop_source->request_stop();
+    if (_stop_source) {
+        _stop_source->request_stop();
+    } else {
+        _logger->warn("流程 '{0}' 尚未启动（_stop_source 为空），跳过 stop 信号", this->id());
+    }
 
     for (auto it = _nodes.rbegin(); it != _nodes.rend(); ++it) {
         auto ref = std::reference_wrapper<IFlowNode>(**it);

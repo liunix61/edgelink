@@ -72,7 +72,11 @@ Awaitable<void> Engine::async_start() {
 Awaitable<void> Engine::async_stop() {
     // 给出线程池停止信号
     _logger->info("开始请求流程引擎停止...");
-    _stop_source->request_stop();
+    if (_stop_source) {
+        _stop_source->request_stop();
+    } else {
+        _logger->warn("流程引擎尚未启动（_stop_source 为空），跳过 stop 信号");
+    }
 
     for (auto it = _flows.rbegin(); it != _flows.rend(); ++it) {
         auto ref = std::reference_wrapper<IFlow>(**it); // 使用 std::reference_wrapper

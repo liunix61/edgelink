@@ -144,7 +144,8 @@ class EDGELINK_EXPORT StandaloneNode : public IStandaloneNode {
   protected:
     StandaloneNode(const std::string_view id, const INodeDescriptor* desc, const JsonObject& config, IEngine* engine)
         : _logger(spdlog::default_logger()->clone(fmt::format("NODE({}:{})", config.at("type").as_string(), id))),
-          _id(id), _type(config.at("type").as_string()), _name(config.at("name").as_string()),
+          _id(id), _type(config.at("type").as_string()),
+          _name(edgelink::value_or(config, "name", std::string_view(""))),
           _disabled(edgelink::value_or(config, "d", false)), _descriptor(desc), _engine(engine) {
         // constructor
     }
@@ -190,7 +191,8 @@ class EDGELINK_EXPORT FlowNode : public IFlowNode {
   protected:
     FlowNode(const std::string_view id, const INodeDescriptor* desc, IFlow* flow, const JsonObject& config)
         : _logger(spdlog::default_logger()->clone(fmt::format("NODE({}:{})", config.at("type").as_string(), id))),
-          _id(id), _type(config.at("type").as_string()), _name(config.at("name").as_string()),
+          _id(id), _type(config.at("type").as_string()),
+          _name(edgelink::value_or(config, "name", std::string_view(""))),
           _disabled(edgelink::value_or(config, "d", false)), _flow(flow), _descriptor(desc),
           _output_ports(std::move(FlowNode::setup_output_ports(config, flow))) {
         // constructor

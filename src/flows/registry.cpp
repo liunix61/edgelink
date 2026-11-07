@@ -29,6 +29,12 @@ Registry::Registry(const EdgeLinkSettings& el_config) : _logger(spdlog::default_
     auto plugins_path = fs::path(el_config.executable_location / "plugins");
     _logger->info("开始注册插件提供的流程节点，插件目录：{0}", plugins_path.string());
 
+    // 修复：插件目录不存在时原 directory_iterator 抛异常导致启动崩溃——改为跳过（无插件也能启动）
+    if (!fs::exists(plugins_path) || !fs::is_directory(plugins_path)) {
+        _logger->warn("插件目录不存在，跳过插件加载：{0}", plugins_path.string());
+        return;
+    }
+
     for (fs::directory_entry const& entry : fs::directory_iterator(plugins_path)) {
         if (!entry.is_regular_file()) {
             continue;
@@ -63,18 +69,26 @@ Registry::~Registry() {
 }
 
 const std::unique_ptr<IFlowNodeProvider>& Registry::get_flow_node_provider(const std::string_view& type_name) const {
-    if (!_flow_node_providers.contains(type_name)) {
-        _logger->error("找不到流程节点类型提供器：type={}", type_name);
+    auto it = _flow_node_providers.find(type_name);
+    if (it == _flow_node_providers.end()) {
+        // 修复：原 _flow_node_providers.at() 找不到时抛 out_of_range（无类型信息）——改抛友好异常
+        auto error_msg = fmt::format("找不到流程节点类型提供器：type={}", type_name);
+        _logger->error(error_msg);
+        throw InvalidDataException(error_msg);
     }
-    return _flow_node_providers.at(type_name);
+    return it->second;
 }
 
 const std::unique_ptr<IStandaloneNodeProvider>&
 Registry::get_standalone_node_provider(const std::string_view& type_name) const {
-    if (!_standalone_node_providers.contains(type_name)) {
-        _logger->error("找不到独立节点类型提供器：type={}", type_name);
+    auto it = _standalone_node_providers.find(type_name);
+    if (it == _standalone_node_providers.end()) {
+        // 修复：原 .at() 抛 out_of_range——改抛友好异常
+        auto error_msg = fmt::format("找不到独立节点类型提供器：type={}", type_name);
+        _logger->error(error_msg);
+        throw InvalidDataException(error_msg);
     }
-    return _standalone_node_providers.at(type_name);
+    return it->second;
 }
 
 void Registry::register_node_provider(const rttr::type& provider_type) {

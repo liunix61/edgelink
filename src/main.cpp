@@ -48,6 +48,9 @@ int main(int argc, char* argv[]) {
 
     auto exec_path = fs::canonical(std::filesystem::path(argv[0]));
 
+    // flows 路径在 try 外声明（默认 ./flows.json），try 内解析 --flows 覆盖
+    std::string flows_path = "./flows.json";
+
     try {
         po::options_description desc("Allowed options");
         desc.add_options()                                                                   //
@@ -80,10 +83,9 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
+        // 解析 flows 路径（--flows / -f），默认 ./flows.json
         if (vm.count("flows")) {
-        }
-
-        if (vm.count("output-file")) {
+            flows_path = vm["flows"].as<std::string>();
         }
     } catch (const std::exception& e) {
         fmt::print("Error: {0}\n", e.what());
@@ -95,10 +97,11 @@ int main(int argc, char* argv[]) {
 
     SPDLOG_INFO("日志子系统已初始化");
 
+    // 若指定了 settings 文件，读取 EdgeLinkSettings 配置（flows 路径等）
     EdgeLinkSettings el_settings{
-        .home_path = fs::path("./"), // exec_path.parent_path(),
+        .home_path = fs::path("./"),
         .executable_location = exec_path.parent_path(),
-        .flows_json_path = "./flows.json",
+        .flows_json_path = flows_path,
     };
 
     const auto injector =
@@ -109,7 +112,9 @@ int main(int argc, char* argv[]) {
                           di::bind<IFlowFactory>().to<edgelink::flows::FlowFactory>().in(di::singleton) // Engine
         );
 
-    auto app = injector.create<App>();
+    // 修复：injector.create<App>() 返回 App 值（非指针），133 行 app-> 非法
+    // 改用 create<std::shared_ptr<App>>() 获取共享指针
+    auto app = injector.create<std::shared_ptr<App>>();
 
     // 启动主程序
     try {
@@ -117,13 +122,24 @@ int main(int argc, char* argv[]) {
         asio::io_context io_context(nconcurrency);
         SPDLOG_INFO("系统并发数量：{}", nconcurrency);
 
+        // 干净停机：SIGINT/SIGTERM -> 先停流程引擎（协程 stop_token 传播）再停事件循环
+        // app->stop_async() 需要 io_context 在运行，故用 co_spawn 在信号回调里投递停机协程
         asio::signal_set signals(io_context, SIGINT, SIGTERM);
-        signals.async_wait([&](auto, auto) {
-            io_context.stop();
-            // std::terminate();
-        });
+        signals.async_wait(
+            [&io_context, app](const boost::system::error_code& ec, int) {
+                if (!ec) {
+                    SPDLOG_INFO("收到停止信号，开始干净停机...");
+                    // 投递异步停机：停引擎协程 -> 停事件循环
+                    asio::co_spawn(io_context,
+                                   [app]() -> asio::awaitable<void> {
+                                       co_await app->stop_async();
+                                       co_return;
+                                   },
+                                   asio::detached);
+                }
+            });
 
-        asio::co_spawn(io_context, app.run_async(), asio::detached);
+        asio::co_spawn(io_context, app->run_async(), asio::detached);
 
         io_context.run();
         SPDLOG_INFO("系统协程系统已停止，开始进行清理...");

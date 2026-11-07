@@ -32,8 +32,9 @@ class DebugNode : public SinkNode {
     Awaitable<void> async_stop() override { co_return; }
 
     Awaitable<void> receive_async(MsgPtr msg) override {
-        //
-        fmt::print("node {0}\n{0}\n", this->name(), msg->to_string());
+        // 修复：fmt 格式串原来有 2 个 {0} 但只传 1 个参数，导致 name 重复打印、msg 内容丢失
+        // 现在正确输出节点名 + 完整消息 JSON
+        fmt::print("node {0}\n{1}\n", this->name(), msg->to_string());
         co_return;
     }
 

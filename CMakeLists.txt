@@ -111,6 +111,7 @@ add_dependencies(${PROJECT_NAME} quickjs)
 set(EL_DEP_LIBS
     PRIVATE Boost::system
     PRIVATE Boost::json
+    PRIVATE Boost::url
     PRIVATE spdlog::spdlog
     PRIVATE fmt::fmt
     PRIVATE RTTR::Core

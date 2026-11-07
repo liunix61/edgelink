@@ -5,7 +5,8 @@ using namespace edgelink;
 class CatchNode : public ScopedSourceNode {
   public:
     CatchNode(const std::string_view id, const JsonObject& config, const INodeDescriptor* desc, IFlow* flow)
-        : ScopedSourceNode(id, desc, flow, config), _uncaught(config.at("uncaught").as_bool()) {}
+        : ScopedSourceNode(id, desc, flow, config),
+          _uncaught(edgelink::value_or(config, "uncaught", false)) {}
 
     virtual ~CatchNode() {
         // TODO 断开连接

@@ -88,7 +88,14 @@ std::unique_ptr<IFlow> FlowFactory::create_flow(const boost::json::array& flows_
                 for (const auto& endpoint : port.as_array()) {
                     std::string_view from = node_id;
                     std::string_view to = endpoint.as_string();
-                    sorter.add_edge(from, to);
+                    // 修复：wires 引用不存在的节点（悬空 wire）——跳过加边，避免拓扑排序/创建时崩溃
+                    if (json_nodes.find(std::string(to)) != json_nodes.end() ||
+                        std::any_of(flows_config.begin(), flows_config.end(), [&to](const auto& nv) {
+                            const auto& obj = nv.as_object();
+                            return obj.contains("id") && obj.at("id").as_string() == to;
+                        })) {
+                        sorter.add_edge(from, to);
+                    }
                 }
             }
             // 如果有 scope 属性也计算在内
@@ -110,7 +117,13 @@ std::unique_ptr<IFlow> FlowFactory::create_flow(const boost::json::array& flows_
 
     for (size_t i = 0; i < sorted_ids.size(); i++) {
         const std::string_view elem_id = sorted_ids[i];
-        const JsonObject& elem = *json_nodes.at(std::string(elem_id));
+        // 修复：sorted_ids 可能含不属于本流程的节点（悬空 wire/scope 目标）——跳过，避免 .at() 崩溃
+        auto it = json_nodes.find(std::string(elem_id));
+        if (it == json_nodes.end()) {
+            _logger->warn("创建流程节点时跳过不属于本流程的节点 id：{}", elem_id);
+            continue;
+        }
+        const JsonObject& elem = *it->second;
         const auto& elem_type = elem.at("type").as_string();
 
         _logger->info("创建流程节点：[type='{0}', json_id='{1}']", elem_type, elem_id);

@@ -56,7 +56,20 @@ class RangeNode : public FlowNode {
             co_return;
         }
 
-        auto value = msg->at_propex(_property);
+        // 修复：除数 _maxin - _minin 为 0 时原计算除零（NaN/Inf）——跳过
+        if (_maxin == _minin) {
+            this->logger()->warn("range 节点 minin==maxin（{0}），除零，跳过", _minin);
+            co_return;
+        }
+
+        JsonValue value;
+        try {
+            value = msg->at_propex(_property);
+        } catch (const std::exception& ex) {
+            // 修复：属性不存在时原 at_propex 抛异常未捕获——记录并跳过
+            this->logger()->warn("range 节点属性 {0} 不存在：{1}", _property, ex.what());
+            co_return;
+        }
         if (value.is_number()) {
             double n = value.to_number<double>();
             if (_action == "clamp") {
@@ -69,7 +82,9 @@ class RangeNode : public FlowNode {
             }
             if (_action == "roll") {
                 auto divisor = _maxin - _minin;
-                n = std::fmod(std::fmod(n - _minin, divisor + divisor), divisor) + _minin;
+                if (divisor != 0) {
+                    n = std::fmod(std::fmod(n - _minin, divisor + divisor), divisor) + _minin;
+                }
             }
             n = ((n - _minin) / (_maxin - _minin) * (_maxout - _minout)) + _minout;
             if (_round) {

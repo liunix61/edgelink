@@ -111,17 +111,24 @@ class FunctionNode : public FlowNode {
 
   public:
     FunctionNode(const std::string_view id, const JsonObject& config, const INodeDescriptor* desc, IFlow* flow)
-        : FlowNode(id, desc, flow, config), _outputs(config.at("outputs").to_number<size_t>()),
-          _func(config.at("func").as_string()), _initialize(config.at("initialize").as_string()),
-          _finalize(config.at("finalize").as_string()), _runtime(), _context(_runtime) {
+        : FlowNode(id, desc, flow, config),
+          _outputs(edgelink::value_or(config, "outputs", static_cast<size_t>(1))),
+          _func(config.if_contains("func") ? std::string(config.at("func").as_string()) : std::string()),
+          _initialize(config.if_contains("initialize") ? std::string(config.at("initialize").as_string())
+                                                       : std::string()),
+          _finalize(config.if_contains("finalize") ? std::string(config.at("finalize").as_string())
+                                                   : std::string()),
+          _runtime(), _context(_runtime) {
 
-        for (auto const& module_json : config.at("libs").as_array()) {
-            auto const& entry = module_json.as_object();
-            auto me = ModuleEntry{
-                std::string(entry.at("module").as_string()),
-                std::string(entry.at("var").as_string()),
-            };
-            _modules.emplace_back(std::move(me));
+        if (auto libs_value = config.if_contains("libs")) {
+            for (auto const& module_json : libs_value->as_array()) {
+                auto const& entry = module_json.as_object();
+                auto me = ModuleEntry{
+                    std::string(entry.at("module").as_string()),
+                    std::string(entry.at("var").as_string()),
+                };
+                _modules.emplace_back(std::move(me));
+            }
         }
 
         try {
@@ -148,7 +155,12 @@ class FunctionNode : public FlowNode {
                           "<import>", JS_EVAL_TYPE_MODULE);
 
             auto prelude_js_path = std::filesystem::current_path() / "resources" / "nodes" / "function" / "prelude.js";
-            _context.evalFile(prelude_js_path.c_str());
+            // 修复：原 evalFile 在 prelude.js 不存在时抛异常导致节点构造崩溃——容错跳过
+            if (std::filesystem::exists(prelude_js_path)) {
+                _context.evalFile(prelude_js_path.c_str());
+            } else {
+                this->logger()->warn("function 节点 prelude.js 不存在（{0}），跳过加载", prelude_js_path.string());
+            }
 
             auto js_user_func = fmt::format(JS_USER_FUNC_TEMPLATE, _func);
             _context.eval(js_user_func);
@@ -165,12 +177,28 @@ class FunctionNode : public FlowNode {
     }
 
     Awaitable<void> async_start() override {
-        _context.eval(_initialize);
+        // 修复：原 _context.eval(_initialize) 无 try-catch——initialize JS 异常未捕获导致协程终止
+        if (!_initialize.empty()) {
+            try {
+                _context.eval(_initialize);
+            } catch (qjs::exception) {
+                auto exc = _context.getException();
+                this->logger()->error("function 节点 initialize 脚本异常：{0}", static_cast<const std::string>(exc));
+            }
+        }
         co_return;
     }
 
     Awaitable<void> async_stop() override {
-        _context.eval(_finalize);
+        // 修复：原 _context.eval(_finalize) 无 try-catch
+        if (!_finalize.empty()) {
+            try {
+                _context.eval(_finalize);
+            } catch (qjs::exception) {
+                auto exc = _context.getException();
+                this->logger()->error("function 节点 finalize 脚本异常：{0}", static_cast<const std::string>(exc));
+            }
+        }
         co_return;
     }
 
@@ -186,13 +214,12 @@ class FunctionNode : public FlowNode {
             // 后续处理执行成果
             auto js_result = boost::json::parse(result_json);
 
-            if (js_result.kind() == JsonKind::array) { // 多个端口消息的情况
+            if (js_result.is_null()) {
+                // 修复：function 返回 null（Node-RED 合法语义：丢弃消息）——原被当错误
+                co_return;
+            } else if (js_result.kind() == JsonKind::array) { // 多个端口消息的情况
                 auto array = js_result.as_array();
-                if (array.size() > this->output_ports().size()) {
-                    auto error_msg = "JS 脚本输出错误的端口数";
-                    this->logger()->error(error_msg);
-                    throw std::out_of_range(error_msg);
-                }
+                // 修复：数组含 null 元素（Node-RED 合法：[null, msg] 表示第 0 端口不发）——按对象元素过滤
                 std::vector<std::shared_ptr<Msg>> msgs;
 
                 for (auto& msg_json_value : array) {
@@ -202,6 +229,11 @@ class FunctionNode : public FlowNode {
                         auto evaled_msg = std::make_shared<Msg>(msg_json, msg->birth_place());
                         msgs.emplace_back(std::move(evaled_msg));
                     }
+                }
+                if (msgs.size() > this->output_ports().size()) {
+                    auto error_msg = "JS 脚本输出错误的端口数";
+                    this->logger()->error(error_msg);
+                    throw std::out_of_range(error_msg);
                 }
                 co_await this->async_send_to_many_port(std::forward<std::vector<std::shared_ptr<Msg>>>(msgs));
             } else if (js_result.kind() == JsonKind::object) { // 单个端口消息的情况
