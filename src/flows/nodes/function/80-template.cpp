@@ -1,11 +1,63 @@
 #include "edgelink/edgelink.hpp"
 
 #include <sstream>
+#include <functional>
+
+#if EL_USE_BOOST_MUSTACHE
+// boost/mustache 库（编译开关：EL_USE_BOOST_MUSTACHE=ON 时使用）
+#include <boost/mustache.hpp>
+#include <boost/json.hpp>
+#endif
 
 using namespace edgelink;
 
 namespace {
 
+#if EL_USE_BOOST_MUSTACHE
+/// @brief boost/mustache 渲染（编译开关 ON）——nlohmann → boost::json 转换后渲染
+std::string render_template(const std::string& tmpl, const JsonObject& data) {
+    // nlohmann::json → boost::json::value 转换（递归）
+    // 简化：Node-RED template 场景数据简单（字符串/数值/布尔/对象），直接转换
+    // 递归 lambda 需显式 std::function（auto 推导失败——EdgeLinkTests 编译上下文）
+    std::function<boost::json::value(const nlohmann::json&)> to_boost_json;
+    to_boost_json = [&to_boost_json](const nlohmann::json& j) -> boost::json::value {
+        if (j.is_object()) {
+            boost::json::object obj;
+            for (auto it = j.begin(); it != j.end(); ++it) {
+                obj[it.key()] = to_boost_json(it.value());
+            }
+            return obj;
+        }
+        if (j.is_array()) {
+            boost::json::array arr;
+            for (auto& v : j) {
+                arr.push_back(to_boost_json(v));
+            }
+            return arr;
+        }
+        if (j.is_string()) {
+            return boost::json::value(j.get<std::string>());
+        }
+        if (j.is_boolean()) {
+            return boost::json::value(j.get<bool>());
+        }
+        if (j.is_number_integer()) {
+            return boost::json::value(j.get<int64_t>());
+        }
+        if (j.is_number_float()) {
+            return boost::json::value(j.get<double>());
+        }
+        return boost::json::value(nullptr);
+    };
+
+    boost::json::object partials;
+    boost::mustache::renderer r(to_boost_json(data), partials);
+    std::string result;
+    boost::mustache::output_ref out(result);
+    r.render_some(tmpl, out);
+    return result;
+}
+#else
 /// @brief 去 Boost：自研 mini mustache 渲染（替代 boost::mustache）
 /// @note 支持 {{key}} / {{key.sub}} 简单替换；{{#section}}...{{/section}} 区块
 ///       完整 mustache 语义超出 EdgeLink template 节点需求，此处最小实现
@@ -69,6 +121,7 @@ std::string render_template(const std::string& tmpl, const JsonObject& data) {
     }
     return out;
 }
+#endif
 
 } // namespace
 

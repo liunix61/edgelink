@@ -7,6 +7,21 @@ cmake_minimum_required(VERSION 3.22)
 
 option(EL_WITH_MQTT "Include MQTT support" YES)
 #option(EL_WITH_MODBUS "Include ModBus support" YES)
+# 可配置依赖：ON=使用第三方库（boost-di/mustache），OFF=使用自研实现（编译开关，用户明令）
+option(EL_USE_BOOST_DI "Use boost-di (header-only DI) instead of hand-rolled DI" ON)
+option(EL_USE_BOOST_MUSTACHE "Use boost/mustache library instead of mini mustache" OFF)
+
+# boost/mustache 库（EL_USE_BOOST_MUSTACHE=ON 时编译——header-only 但需 boost::json 链接）
+if(EL_USE_BOOST_MUSTACHE)
+    # 绕过 mustache 自带 CMakeLists（其链接 Boost::config/core/json/assert——未 find_package 无 target）
+    # 手动编译 renderer.cpp + 链接 boost_json（edge_deps 用户级安装）
+    add_library(boost_mustache STATIC ./libs/mustache/src/renderer.cpp)
+    target_include_directories(boost_mustache PUBLIC ./libs/mustache/include /home/liunix/edge_deps/usr/include)
+    target_link_directories(boost_mustache PUBLIC /home/liunix/edge_deps/usr/lib/aarch64-linux-gnu)
+    target_link_libraries(boost_mustache PUBLIC boost_json)
+    target_compile_definitions(boost_mustache PUBLIC BOOST_MUSTACHE_NO_LIB)
+    target_compile_features(boost_mustache PUBLIC cxx_std_11)
+endif()
 
 # 按代码尺寸优化
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -63,9 +78,11 @@ include_directories(
     ${CMAKE_BINARY_DIR}
     ./include
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/rva/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libs/boost-di/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/croncpp/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/quickjspp"
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/nlohmann"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libs/mustache/include"
 )
 
 file(GLOB_RECURSE EL_SOURCES 
@@ -88,6 +105,12 @@ add_dependencies(${PROJECT_NAME} EdgeLinkAbstractions)
 
 add_dependencies(${PROJECT_NAME} quickjs)
 
+# 可配置依赖编译开关（用户明令）：EL_USE_BOOST_DI / EL_USE_BOOST_MUSTACHE
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    EL_USE_BOOST_DI=$<BOOL:${EL_USE_BOOST_DI}>
+    EL_USE_BOOST_MUSTACHE=$<BOOL:${EL_USE_BOOST_MUSTACHE}>
+)
+
 # target_compile_options(${PROJECT_NAME} PRIVATE -fno-rtti), 不要关掉 RTTI
 
 # 去 Boost：系统 Boost 已移除（Boost::system/json/url/program_options），改用自研协程 + nlohmann + boost::di(vendor)
@@ -99,6 +122,11 @@ set(EL_DEP_LIBS
     PRIVATE taocpp::pegtl
     PRIVATE EdgeLinkAbstractions
 )
+
+# boost/mustache 库（EL_USE_BOOST_MUSTACHE=ON 时链接——编译开关）
+if(EL_USE_BOOST_MUSTACHE)
+    list(APPEND EL_DEP_LIBS PRIVATE boost_mustache)
+endif()
 
 target_link_libraries(${PROJECT_NAME}
     ${EL_DEP_LIBS}
@@ -143,6 +171,10 @@ if(BUILD_TESTING)
     add_dependencies(EdgeLinkTests EdgeLinkAbstractions)
 
     target_compile_definitions(EdgeLinkTests PRIVATE EL_TEST)
+    target_compile_definitions(EdgeLinkTests PRIVATE
+        EL_USE_BOOST_DI=$<BOOL:${EL_USE_BOOST_DI}>
+        EL_USE_BOOST_MUSTACHE=$<BOOL:${EL_USE_BOOST_MUSTACHE}>
+    )
 
     target_precompile_headers(EdgeLinkTests PRIVATE tests/pch.hpp)
 

@@ -1,3 +1,7 @@
+#if EL_USE_BOOST_DI
+#include <boost/di.hpp>
+#endif
+
 #include "version-config.h"
 #include "edgelink/edgelink.hpp"
 #include "logging.hpp"
@@ -90,12 +94,23 @@ int main(int argc, char* argv[]) {
         .flows_json_path = flows_path,
     };
 
-    // 去 Boost：boost::di 已移除——手动构造依赖链（清晰、零 Boost 依赖）
-    // Registry → FlowFactory → Engine → App（引用成员需先构造被依赖对象）
+    // 编译开关（用户明令）：EL_USE_BOOST_DI=ON 用 boost-di（header-only 零链接），OFF 用自研手动 DI
+#if EL_USE_BOOST_DI
+    const auto injector =
+        boost::di::make_injector(boost::di::bind<>().to(el_settings),                           // EdgeLinkSettings
+                          boost::di::bind<App>().in(boost::di::singleton),                      // App
+                          boost::di::bind<IEngine>().to<Engine>().in(boost::di::singleton),     // Engine
+                          boost::di::bind<IRegistry>().to<Registry>().in(boost::di::singleton), // Registry
+                          boost::di::bind<IFlowFactory>().to<edgelink::flows::FlowFactory>().in(boost::di::singleton) // Engine
+        );
+    auto app = injector.create<std::shared_ptr<App>>();
+#else
+    // 自研手动 DI（零第三方依赖）：Registry → FlowFactory → Engine → App
     auto registry = std::make_shared<Registry>(el_settings);
     auto flow_factory = std::make_shared<edgelink::flows::FlowFactory>(*registry);
     auto engine = std::make_shared<Engine>(el_settings, *flow_factory);
     auto app = std::make_shared<App>(std::make_shared<JsonObject>(), engine);
+#endif
 
     // 启动主程序
     try {
