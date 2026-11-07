@@ -25,6 +25,8 @@ Makefile.in
 /build-cmake/
 /build-asan/
 /build-ubsan/
+/build-di-off/
+/build-mustache-on/
 /libs/nanosdk/build/
 
 vcpkg_installed

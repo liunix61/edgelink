@@ -53,10 +53,10 @@ class EvalEnv final {
 
 class EvalContext final {
   public:
-    EvalContext() {}
+    explicit EvalContext(FlowNode* node) : _node(node) {}
 
     static std::shared_ptr<EvalContext> create(FlowNode* node, std::shared_ptr<Msg> msg) {
-        auto ptr = std::make_shared<EvalContext>();
+        auto ptr = std::make_shared<EvalContext>(node);
         return ptr;
     }
 

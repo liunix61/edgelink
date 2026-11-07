@@ -3,6 +3,11 @@
 #include "edgelink/utils.hpp"
 #include "edgelink/signal.hpp"
 
+#include <spdlog/spdlog.h>
+#include <spdlog/fmt/fmt.h>
+#include <rttr/registration.h>
+#include <rttr/rttr_enable.h>
+
 namespace edgelink {
 
 struct IFlow;
