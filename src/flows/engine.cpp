@@ -8,7 +8,7 @@ namespace edgelink {
 
 Engine::Engine(const EdgeLinkSettings& el_config, const IFlowFactory& flow_factory)
     : _logger(spdlog::default_logger()->clone("Engine")), _settings(el_config), _flow_factory(flow_factory),
-      _flows_json_path(el_config.flows_json_path) {
+      _flows_json_path(el_config.flows_json_path), _disabled(false) {
 
     // std::vector<std::unique_ptr<IFlow>> create_flows(const JsonArray& flows_config);
 }

@@ -4,14 +4,14 @@ namespace edgelink {
 
 class NotSupportedException : public std::logic_error {
   public:
-    explicit NotSupportedException(const std::string str) : std::logic_error(str) {}
+    explicit NotSupportedException(const std::string& str) : std::logic_error(str) {}
     explicit NotSupportedException(const char* str) : std::logic_error(str) {}
     NotSupportedException(NotSupportedException&& other) noexcept : std::logic_error(std::move(other)) {}
 };
 
 class NotImplementedException : public std::logic_error {
   public:
-    explicit NotImplementedException(const std::string str) : std::logic_error(str) {}
+    explicit NotImplementedException(const std::string& str) : std::logic_error(str) {}
     explicit NotImplementedException(const char* str) : std::logic_error(str) {}
     NotImplementedException(NotImplementedException&& other) noexcept : std::logic_error(std::move(other)) {}
 };

@@ -23,6 +23,8 @@ Makefile.in
 *.stamp
 /build/
 /build-cmake/
+/build-asan/
+/build-ubsan/
 /libs/nanosdk/build/
 
 vcpkg_installed
