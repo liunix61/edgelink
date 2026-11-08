@@ -1,0 +1,63 @@
+[
+  {
+    "id": "flow_main",
+    "type": "tab",
+    "label": "跨协议协作（Modbus→判断→CANopen/打印→展示）",
+    "disabled": false,
+    "info": "docs/13 §5.1 场景：Modbus 传感器读寄存器 → edgelink 判断超限 → 超限则 CANopen SDO 写 0x2002 + 打印指令 → WS 展示"
+  },
+  {
+    "id": "src_modbus",
+    "type": "protocol.source",
+    "z": "flow_main",
+    "name": "Modbus 传感器数据",
+    "protocol": "modbus",
+    "topic": "protocol/modbus",
+    "wires": [["fn_check"]]
+  },
+  {
+    "id": "fn_check",
+    "type": "function",
+    "z": "flow_main",
+    "name": "判断超限（meter_value > 1000）",
+    "func": "const v = msg.payload.value || 0;\nmsg.over = v > 1000;\nreturn [msg, msg];",
+    "outputs": 2,
+    "noerr": 0,
+    "wires": [["cmd_can_sdo", "cmd_print", "disp_hmi"], ["disp_hmi"]]
+  },
+  {
+    "id": "cmd_can_sdo",
+    "type": "protocol.command",
+    "z": "flow_main",
+    "name": "CANopen SDO 写 controlword 0x2002",
+    "protocol": "canopen",
+    "shm": "/webhmi_commands",
+    "wires": []
+  },
+  {
+    "id": "cmd_print",
+    "type": "protocol.command",
+    "z": "flow_main",
+    "name": "打印指令",
+    "protocol": "canopen",
+    "shm": "/webhmi_commands",
+    "wires": []
+  },
+  {
+    "id": "disp_hmi",
+    "type": "protocol.display",
+    "z": "flow_main",
+    "name": "HMI 实时展示",
+    "ws_url": "ws://0.0.0.0:8081/ws",
+    "topic": "",
+    "wires": []
+  },
+  {
+    "id": "dbg_all",
+    "type": "debug",
+    "z": "flow_main",
+    "name": "调试输出",
+    "active": true,
+    "wires": []
+  }
+]
