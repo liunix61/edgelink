@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.22)
 #set(VCPKG_OVERLAY_TRIPLETS ./custom-triplets)
 
 option(EL_WITH_MQTT "Include MQTT support" YES)
+option(EL_WITH_PROTOCOL_SOURCE "Include protocol.source (webhmi 共享内存事件队列数据源)" YES)
 #option(EL_WITH_MODBUS "Include ModBus support" YES)
 # 可配置依赖：ON=使用第三方库（boost-di/mustache），OFF=使用自研实现（编译开关，用户明令）
 option(EL_USE_BOOST_DI "Use boost-di (header-only DI) instead of hand-rolled DI" ON)
