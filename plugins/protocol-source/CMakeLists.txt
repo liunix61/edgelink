@@ -9,6 +9,30 @@ if(EL_WITH_PROTOCOL_SOURCE)
         PRIVATE
     )
 
+    # C3 展示节点：nng WS pub 广播（HMI 订阅）
+    set(NANOSDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/nanosdk)
+    set(NANOSDK_BUILD ${NANOSDK_DIR}/build)
+    set(NANOSDK_LIB ${NANOSDK_BUILD}/libnng.a)
+    if(NOT EXISTS ${NANOSDK_LIB})
+        include(ExternalProject)
+        ExternalProject_Add(nanosdk_build
+            SOURCE_DIR ${NANOSDK_DIR}
+            BINARY_DIR ${NANOSDK_BUILD}
+            INSTALL_DIR ${NANOSDK_BUILD}
+            CMAKE_ARGS
+                -DCMAKE_BUILD_TYPE=Release
+                -DNNG_ENABLE_QUIC=OFF
+                -DBUILD_SHARED_LIBS=OFF
+                -DCMAKE_C_FLAGS=-fPIC
+            BUILD_BYPRODUCTS ${NANOSDK_LIB}
+            BUILD_COMMAND cmake --build . --target nng
+            INSTALL_COMMAND ""
+        )
+        add_dependencies(${THIS_PLUGIN} nanosdk_build)
+    endif()
+    target_include_directories(${THIS_PLUGIN} PRIVATE ${NANOSDK_DIR}/include)
+    target_link_libraries(${THIS_PLUGIN} PRIVATE ${NANOSDK_LIB} pthread)
+
     target_precompile_headers(${THIS_PLUGIN} PRIVATE src/pch.hpp)
 
     # 测试：shm_event_queue 跨进程收发 + 无锁并发（独立可执行）
