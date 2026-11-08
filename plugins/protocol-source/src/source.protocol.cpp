@@ -34,8 +34,8 @@ class ProtocolSourceNode : public SourceNode {
 
   protected:
     Awaitable<void> on_async_run() override {
-        // 打开共享内存事件队列（只读端）
-        _queue = shm_event_queue_open(0, 0 /* 仅打开 */);
+        // 打开共享内存事件队列（只读端）；若不存在则创建（webhmi 未启动时兜底）
+        _queue = shm_event_queue_open(0, 1 /* create 兜底 */);
         if (_queue == nullptr) {
             this->logger()->error("protocol.source 打开共享内存事件队列失败：{0}", _shm_name);
             co_return;
